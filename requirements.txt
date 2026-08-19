@@ -1,0 +1,10 @@
+Flask>=3.0,<4
+Flask-Login>=0.6,<1
+Flask-SQLAlchemy>=3.1,<4
+SQLAlchemy>=2.0,<3
+PyMySQL>=1.1,<2
+requests>=2.31,<3
+beautifulsoup4>=4.12,<5
+jieba>=0.42,<1
+snownlp>=0.12,<1
+pytest>=8,<9
