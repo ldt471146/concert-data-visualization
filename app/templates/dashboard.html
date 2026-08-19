@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+{% block title %}演唱会数据分析看板 / PULSE ATLAS{% endblock %}
+{% block page_name %}dashboard{% endblock %}
+{% block body %}
+<div class="app-frame">
+    <aside class="side-rail" aria-label="主导航">
+        <a class="brand-mark" href="{{ url_for('main.dashboard') }}" aria-label="PULSE ATLAS 首页">
+            <span class="brand-dot"></span><span class="brand-word">PULSE<br><b>ATLAS</b></span>
+        </a>
+        <nav class="rail-nav">
+            <a href="#overview" class="rail-link is-active" data-scroll-target="overview" aria-label="数据概览"><i data-lucide="scan-line"></i><span>概览</span></a>
+            <a href="#signals" class="rail-link" data-scroll-target="signals" aria-label="分析图表"><i data-lucide="activity"></i><span>分析</span></a>
+            <a href="#schedule" class="rail-link" data-scroll-target="schedule" aria-label="演出场次"><i data-lucide="calendar-days"></i><span>场次</span></a>
+            <a href="#recommendations" class="rail-link" data-scroll-target="recommendations" aria-label="推荐"><i data-lucide="sparkles"></i><span>推荐</span></a>
+        </nav>
+        <div class="rail-footer">
+            <a class="rail-link" href="{{ url_for('admin.dashboard') }}" aria-label="管理后台"><i data-lucide="lock-keyhole"></i><span>后台</span></a>
+            <span class="rail-version">V.01 / 25</span>
+        </div>
+    </aside>
+
+    <main class="main-stage" id="overview">
+        <header class="top-bar">
+            <div class="mobile-brand"><span class="brand-dot"></span><b>PULSE / ATLAS</b></div>
+            <div class="top-meta"><span class="signal-pip"></span><span>公开数据快照</span><span class="meta-divider"></span><span id="last-updated">暂无</span></div>
+            <div class="top-actions">
+                <button class="icon-button mobile-menu-trigger" type="button" aria-label="打开导航" data-mobile-menu><i data-lucide="menu"></i></button>
+                <a class="text-button" href="{{ url_for('admin.dashboard') }}"><i data-lucide="shield-check"></i><span>管理后台</span></a>
+            </div>
+        </header>
+
+        <section class="hero-grid" data-reveal>
+            <div class="hero-copy">
+                <div class="eyebrow"><span class="eyebrow-line"></span>演唱会数据分析</div>
+                <h1>演唱会<br><em>数据分析看板</em></h1>
+                <p class="hero-lede">集中查看演出场次、城市分布、票价、评论和艺人数据。</p>
+                <div class="hero-actions">
+                    <a href="#signals" class="btn btn-primary"><span>查看分析</span><i data-lucide="arrow-down-right"></i></a>
+                    <button class="btn btn-ghost" type="button" data-refresh><i data-lucide="refresh-cw"></i><span>刷新数据</span></button>
+                </div>
+            </div>
+            <div class="hero-instrument" aria-label="数据状态">
+                <div class="instrument-head"><span>数据状态</span><span class="mono">查询<span class="blink">_</span></span></div>
+                <div class="instrument-center"><strong id="hero-index">0</strong><span>情绪均值</span></div>
+                <div class="instrument-ring ring-one"></div><div class="instrument-ring ring-two"></div>
+                <div class="instrument-cross cross-a"></div><div class="instrument-cross cross-b"></div>
+                <div class="instrument-axis axis-x"></div><div class="instrument-axis axis-y"></div>
+                <div class="instrument-label label-a">城市</div><div class="instrument-label label-b">评论</div>
+                <div class="instrument-foot"><span>数据已加载</span><span class="status-tag">已同步</span></div>
+            </div>
+        </section>
+
+        <section class="metric-grid" aria-label="关键指标" data-reveal>
+            <article class="metric-card metric-featured"><div class="metric-label"><i data-lucide="ticket"></i><span>演出场次</span></div><strong id="metric-concerts">0</strong><span class="metric-note">当前筛选结果</span><span class="metric-index">01</span></article>
+            <article class="metric-card"><div class="metric-label"><i data-lucide="messages-square"></i><span>评论数量</span></div><strong id="metric-comments">0</strong><span class="metric-note">已收录评论</span><span class="metric-index">02</span></article>
+            <article class="metric-card"><div class="metric-label"><i data-lucide="map-pinned"></i><span>覆盖城市</span></div><strong id="metric-cities">0</strong><span class="metric-note">演出城市</span><span class="metric-index">03</span></article>
+            <article class="metric-card metric-accent"><div class="metric-label"><i data-lucide="heart-pulse"></i><span>评论情绪</span></div><strong><span id="metric-sentiment">0</span><small>/100</small></strong><span class="metric-note">评论平均分</span><span class="metric-index">04</span></article>
+        </section>
+
+        <section class="filter-strip" aria-label="数据筛选" data-reveal>
+            <div class="filter-title"><span class="filter-number">/</span><span>筛选条件</span></div>
+            <form id="filter-form" class="filter-form">
+                <label class="field compact-field"><span>艺人</span><select name="artist" id="filter-artist"><option value="全部">全部</option></select><i data-lucide="chevron-down"></i></label>
+                <label class="field compact-field"><span>城市</span><select name="city" id="filter-city"><option value="全部">全部</option></select><i data-lucide="chevron-down"></i></label>
+                <label class="field compact-field"><span>状态</span><select name="status" id="filter-status"><option value="全部">全部</option></select><i data-lucide="chevron-down"></i></label>
+                <label class="field number-field"><span>最低票价</span><input type="number" name="min_price" id="filter-min-price" min="0" step="10" placeholder="不限"></label>
+                <label class="field number-field"><span>最高票价</span><input type="number" name="max_price" id="filter-max-price" min="0" step="10" placeholder="不限"></label>
+                <label class="field date-field"><span>开始日期</span><input type="date" name="start" id="filter-start"></label>
+                <label class="field date-field"><span>结束日期</span><input type="date" name="end" id="filter-end"></label>
+                <button class="filter-submit" type="submit" aria-label="应用筛选"><i data-lucide="arrow-up-right"></i></button>
+                <button class="filter-reset" type="button" data-reset-filters aria-label="重置筛选"><i data-lucide="rotate-ccw"></i></button>
+            </form>
+        </section>
+
+        <section class="section-heading" id="signals" data-reveal>
+            <div><span class="eyebrow"><span class="eyebrow-line"></span>数据分析</span><h2>数据概览</h2></div>
+            <p>用城市、票价、趋势和评论数据查看演出情况。</p>
+        </section>
+
+        <section class="chart-grid" data-reveal>
+            <article class="chart-panel chart-large tilt-card"><div class="panel-head"><div><span class="panel-kicker">01 / 城市</span><h3>城市分布</h3></div><span class="panel-mark">场次</span></div><div id="city-chart" class="chart chart-city" aria-label="城市演唱会场次图"></div><div class="chart-foot"><span><i data-lucide="info"></i>场次数量</span><span>按公开演出数据统计</span></div></article>
+            <article class="chart-panel tilt-card"><div class="panel-head"><div><span class="panel-kicker">02 / 评论</span><h3>评论情绪</h3></div><i data-lucide="radar" class="panel-icon"></i></div><div id="sentiment-chart" class="chart chart-sentiment" aria-label="评论情绪图"></div><div class="legend-row"><span><b class="legend-dot positive"></b>正面</span><span><b class="legend-dot neutral"></b>中性</span><span><b class="legend-dot negative"></b>负面</span></div></article>
+            <article class="chart-panel tilt-card"><div class="panel-head"><div><span class="panel-kicker">03 / 票价</span><h3>票价区间</h3></div><i data-lucide="bar-chart-3" class="panel-icon"></i></div><div id="price-chart" class="chart chart-price" aria-label="票价区间图"></div><div class="chart-foot"><span>最低票价</span><span>场次</span></div></article>
+            <article class="chart-panel chart-wide tilt-card"><div class="panel-head"><div><span class="panel-kicker">04 / 评论趋势</span><h3>评论时间趋势</h3></div><span class="panel-mark">按月</span></div><div id="trend-chart" class="chart chart-trend" aria-label="评论趋势图"></div><div class="chart-foot"><span><i data-lucide="move-up-right"></i>评论数量 / 月</span><span>当前筛选结果</span></div></article>
+            <article class="chart-panel tilt-card"><div class="panel-head"><div><span class="panel-kicker">05 / 地区</span><h3>评论来源</h3></div><i data-lucide="route" class="panel-icon"></i></div><div id="region-chart" class="chart chart-region" aria-label="用户地区图"></div></article>
+            <article class="keyword-panel tilt-card"><div class="panel-head"><div><span class="panel-kicker">06 / 关键词</span><h3>评论关键词</h3></div><i data-lucide="scan-text" class="panel-icon"></i></div><div id="keyword-cloud" class="keyword-cloud" aria-label="评论高频词"></div><div class="chart-foot"><span>词频统计</span><span>评论文本</span></div></article>
+        </section>
+
+        <section class="extended-analytics" data-reveal aria-labelledby="extended-title">
+            <div class="section-toolbar"><div><span class="eyebrow"><span class="eyebrow-line"></span>扩展分析</span><h2 id="extended-title">六项分析</h2></div><span class="section-note">接口数据实时加载</span></div>
+            <div class="analytics-grid">
+                <article class="chart-panel analytics-panel"><div class="panel-head"><div><span class="panel-kicker">01 / 地图</span><h3>城市分布地图</h3></div><i data-lucide="map" class="panel-icon"></i></div><div id="map-chart" class="chart analytics-chart" aria-label="城市分布地图"></div></article>
+                <article class="chart-panel analytics-panel"><div class="panel-head"><div><span class="panel-kicker">02 / 趋势</span><h3>月度趋势</h3></div><i data-lucide="line-chart" class="panel-icon"></i></div><div id="monthly-trend-chart" class="chart analytics-chart" aria-label="月度趋势"></div></article>
+                <article class="chart-panel analytics-panel"><div class="panel-head"><div><span class="panel-kicker">03 / 日历</span><h3>演唱会日历</h3></div><i data-lucide="calendar-days" class="panel-icon"></i></div><div id="calendar-grid" class="calendar-grid" aria-label="演唱会日历"></div></article>
+                <article class="chart-panel analytics-panel"><div class="panel-head"><div><span class="panel-kicker">04 / 价格</span><h3>票价分析</h3></div><i data-lucide="banknote" class="panel-icon"></i></div><div id="price-analysis-chart" class="chart analytics-chart" aria-label="票价分析"></div></article>
+                <article class="chart-panel analytics-panel"><div class="panel-head"><div><span class="panel-kicker">05 / 主题</span><h3>评论主题</h3></div><i data-lucide="messages-square" class="panel-icon"></i></div><div id="topics-chart" class="chart analytics-chart" aria-label="评论主题"></div></article>
+                <article class="chart-panel analytics-panel"><div class="panel-head"><div><span class="panel-kicker">06 / 艺人</span><h3>艺人对比</h3></div><i data-lucide="users" class="panel-icon"></i></div><div id="artists-chart" class="chart analytics-chart" aria-label="艺人对比"></div></article>
+            </div>
+        </section>
+
+        <section class="split-heading" id="schedule" data-reveal>
+            <div><span class="eyebrow"><span class="eyebrow-line"></span>演出安排</span><h2>演唱会场次</h2></div>
+            <a href="#recommendations" class="inline-link">查看推荐 <i data-lucide="arrow-up-right"></i></a>
+        </section>
+        <section class="schedule-layout" data-reveal>
+            <div class="schedule-list" id="concert-list"></div>
+            <aside class="comment-stream"><div class="stream-head"><span class="panel-kicker">最近评论</span><i data-lucide="radio"></i></div><div id="comment-list" class="comment-list"></div><div class="stream-end"><span class="signal-pip"></span>评论样本结束</div></aside>
+        </section>
+
+        <section class="preference-section" id="preferences" data-reveal>
+            <div class="section-toolbar"><div><span class="eyebrow"><span class="eyebrow-line"></span>本地设置</span><h2>偏好设置</h2></div><span class="section-note">仅保存在当前浏览器</span></div>
+            <form id="preference-form" class="preference-form">
+                <label class="field"><span>城市</span><select id="preference-city" name="city"><option value="全部">全部</option></select><i data-lucide="chevron-down"></i></label>
+                <label class="field"><span>预算上限</span><input id="preference-budget" name="budget" type="number" min="0" step="50" placeholder="不限"></label>
+                <label class="field"><span>售票状态</span><select id="preference-status" name="status"><option value="全部">全部</option></select><i data-lucide="chevron-down"></i></label>
+                <label class="field"><span>艺人</span><select id="preference-artist" name="artist"><option value="全部">全部</option></select><i data-lucide="chevron-down"></i></label>
+                <button class="btn btn-primary preference-submit" type="submit"><span>保存偏好</span><i data-lucide="save"></i></button>
+                <button class="btn btn-ghost" type="button" data-clear-preferences><span>清除</span><i data-lucide="rotate-ccw"></i></button>
+            </form>
+        </section>
+
+        <section class="reminder-section" id="reminders" data-reveal>
+            <div class="section-toolbar"><div><span class="eyebrow"><span class="eyebrow-line"></span>页面提醒</span><h2>临近演出与开售</h2></div><span class="section-note">根据场次日期和状态</span></div>
+            <div id="reminder-list" class="reminder-list"><div class="empty-state">暂无提醒</div></div>
+        </section>
+
+        <section class="comparison-section" id="comparison" data-reveal>
+            <div class="section-toolbar"><div><span class="eyebrow"><span class="eyebrow-line"></span>本地收藏</span><h2>收藏和对比</h2></div><button class="icon-button" type="button" data-clear-comparison aria-label="清除对比"><i data-lucide="trash-2"></i></button></div>
+            <div class="favorite-summary"><span>已收藏 <strong id="favorite-count">0</strong> 场</span><div id="favorite-list" class="favorite-list"><span>暂无收藏</span></div></div>
+            <div id="comparison-list" class="comparison-list"><div class="empty-state">从场次列表加入 2 至 3 场后开始对比</div></div>
+        </section>
+
+        <section class="recommend-section" id="recommendations" data-reveal>
+            <div class="recommend-header"><div><span class="eyebrow"><span class="eyebrow-line"></span>推荐结果</span><h2>适合你的场次</h2></div><p>根据筛选条件、偏好、讨论度和售票状态生成。</p></div>
+            <div class="recommend-list" id="recommend-list"></div>
+        </section>
+
+        <footer class="site-footer"><div class="footer-brand"><span class="brand-dot"></span><span>PULSE / ATLAS</span></div><div class="footer-note">FLASK · SQLALCHEMY · ECHARTS<br>公开数据 / 本地快照</div><a href="#overview" class="footer-top" aria-label="返回顶部"><i data-lucide="arrow-up"></i></a></footer>
+    </main>
+</div>
+{% endblock %}

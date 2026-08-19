@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}管理后台 / PULSE ATLAS{% endblock %}
+{% block body_class %}admin-page{% endblock %}
+{% block page_name %}admin{% endblock %}
+{% block body %}
+<div class="admin-shell">
+    <header class="admin-topbar">
+        <a class="brand-mark admin-brand" href="{{ url_for('main.dashboard') }}"><span class="brand-dot"></span><span class="brand-word">PULSE<br><b>ATLAS</b></span></a>
+        <div class="admin-context"><span class="signal-pip"></span><span>管理后台</span><span class="meta-divider"></span><span>管理员 / {{ admin_name }}</span></div>
+        <div class="top-actions"><a class="text-button" href="{{ url_for('main.dashboard') }}"><i data-lucide="layout-dashboard"></i><span>返回看板</span></a><a class="icon-button" href="{{ url_for('auth.logout') }}" aria-label="退出登录"><i data-lucide="log-out"></i></a></div>
+    </header>
+    <main class="admin-main">
+        <section class="admin-hero" data-reveal><div><span class="eyebrow"><span class="eyebrow-line"></span>数据管理</span><h1>管理后台</h1></div><div class="admin-status"><span class="status-tag"><i data-lucide="shield-check"></i>已登录</span><p>管理 CSV 数据、分析任务、导出和场次记录。</p></div></section>
+
+        <section class="admin-actions-grid" data-reveal>
+            <article class="admin-action-card import-card"><div class="action-icon"><i data-lucide="upload"></i></div><div><span class="panel-kicker">CSV / 导入</span><h3>导入数据</h3><p>选择演唱会或评论 CSV，可先预览校验报告。</p></div><form id="import-form" class="import-form"><select name="kind" aria-label="数据类型"><option value="concerts">演唱会信息</option><option value="comments">评论信息</option></select><label class="file-input"><input type="file" name="file" accept=".csv,text/csv" required><span><i data-lucide="file-up"></i><span data-file-name>选择 CSV 文件</span></span></label><div class="import-actions"><button class="wide-action" type="button" data-preview-import><span>预览报告</span><i data-lucide="scan-search"></i></button><button class="mini-submit" type="submit" aria-label="导入 CSV"><i data-lucide="arrow-up-right"></i></button></div></form></article>
+            <article class="admin-action-card"><div class="action-icon accent-icon"><i data-lucide="scan-search"></i></div><div><span class="panel-kicker">分析 / 更新</span><h3>重建评论分析</h3><p>刷新词频、情绪、城市和价格聚合结果。</p></div><button class="wide-action" type="button" data-run-analysis><span>运行分析任务</span><i data-lucide="play"></i></button></article>
+            <article class="admin-action-card"><div class="action-icon cyan-icon"><i data-lucide="file-down"></i></div><div><span class="panel-kicker">CSV / 导出</span><h3>导出演唱会数据</h3><p>下载当前数据库中的演唱会记录 CSV。</p></div><a class="wide-action" href="{{ url_for('admin.export_concerts') }}"><span>下载 CSV</span><i data-lucide="download"></i></a></article>
+        </section>
+
+        <section class="import-report-section" data-reveal>
+            <div class="section-toolbar"><div><span class="eyebrow"><span class="eyebrow-line"></span>导入预览</span><h2>CSV 校验报告</h2></div><span class="section-note">选择文件后点击预览</span></div>
+            <div id="import-report" class="import-report"><div class="empty-state">暂无预览报告</div></div>
+        </section>
+
+        <section class="jobs-section" data-reveal><div class="section-toolbar"><div><span class="eyebrow"><span class="eyebrow-line"></span>任务记录</span><h2>运行记录</h2></div><button class="icon-button" type="button" data-refresh-jobs aria-label="刷新运行记录"><i data-lucide="refresh-cw"></i></button></div><div class="jobs-table-wrap"><table class="jobs-table"><thead><tr><th>任务</th><th>状态</th><th>输入</th><th>成功</th><th>异常</th><th>启动时间</th><th>结果</th><th>操作</th></tr></thead><tbody id="jobs-body">{% for job in jobs %}<tr><td><span class="job-name">{{ job.job_type }}</span></td><td><span class="job-status status-{{ job.status }}">{{ '完成' if job.status == 'success' else '失败' if job.status == 'failed' else '运行中' }}</span></td><td>{{ job.input_count }}</td><td>{{ job.success_count }}</td><td>{{ job.failed_count }}</td><td class="mono">{{ job.started_at[:16].replace('T', ' ') }}</td><td>{{ job.message }}</td><td><button class="table-action" type="button" data-job-detail="{{ job.id }}">查看详情</button></td></tr>{% else %}<tr><td colspan="8" class="table-empty">暂无运行记录</td></tr>{% endfor %}</tbody></table></div><div id="job-detail" class="job-detail" hidden></div></section>
+
+        <section class="content-edit-section" data-reveal>
+            <div class="section-toolbar"><div><span class="eyebrow"><span class="eyebrow-line"></span>记录操作</span><h2>修改场次记录</h2></div><span class="section-note">按记录 ID 提交已支持字段</span></div>
+            <form id="edit-concert-form" class="edit-concert-form"><label class="field"><span>记录 ID</span><input id="edit-concert-id" type="number" min="1" required placeholder="例如 12"></label><label class="field"><span>名称</span><input id="edit-concert-name" type="text" placeholder="不修改可留空"></label><label class="field"><span>场馆</span><input id="edit-concert-venue" type="text" placeholder="不修改可留空"></label><label class="field"><span>时间</span><input id="edit-concert-time" type="datetime-local"></label><label class="field"><span>价格文本</span><input id="edit-concert-price" type="text" placeholder="例如 380-1280"></label><label class="field"><span>售票状态</span><select id="edit-concert-status"><option value="">不修改</option><option>待定</option><option>售票中</option><option>即将开售</option><option>已售罄</option><option>停售</option><option>预售</option><option>未开售</option><option>已结束</option></select><i data-lucide="chevron-down"></i></label><button class="wide-action" type="submit"><span>保存修改</span><i data-lucide="save"></i></button></form><div id="edit-result" class="edit-result" aria-live="polite"></div>
+        </section>
+
+        <section class="admin-foot-grid" data-reveal><div><span class="panel-kicker">运行环境</span><div class="stack-list"><span>FLASK</span><span>SQLALCHEMY</span><span>MYSQL READY</span><span>RULE ENGINE</span></div></div><div class="admin-foot-note"><i data-lucide="info"></i><span>本地默认使用 SQLite；设置 DATABASE_URL 后切换 MySQL。</span></div></section>
+    </main>
+</div>
+{% endblock %}

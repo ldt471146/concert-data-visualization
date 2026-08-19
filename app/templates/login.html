@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}管理员登录 / PULSE ATLAS{% endblock %}
+{% block body_class %}auth-page{% endblock %}
+{% block page_name %}login{% endblock %}
+{% block body %}
+<main class="auth-shell">
+    <section class="auth-art" aria-label="PULSE ATLAS 系统入口">
+        <a class="auth-brand" href="{{ url_for('main.dashboard') }}"><span class="brand-dot"></span><span>PULSE / ATLAS</span></a>
+        <div class="auth-art-copy"><span class="eyebrow"><span class="eyebrow-line"></span>管理员登录</span><h1>管理员登录<br><em>进入系统。</em></h1><p>登录后管理数据快照和分析任务。</p></div>
+        <div class="auth-grid-lines" aria-hidden="true"><span></span><span></span><span></span><span></span><b>登录 / 01</b></div>
+        <div class="auth-art-footer"><span>本地数据 / 2025</span><span class="status-tag">登录保护</span></div>
+    </section>
+    <section class="auth-form-wrap">
+        <a class="back-link" href="{{ url_for('main.dashboard') }}"><i data-lucide="arrow-left"></i><span>返回数据看板</span></a>
+        <div class="auth-form-card">
+            <span class="panel-kicker">管理员登录</span><h2>管理员登录</h2><p class="form-intro">进入后台管理数据快照与分析任务。</p>
+            <form method="post" class="auth-form">
+                <label class="form-field"><span>账号</span><div class="input-wrap"><i data-lucide="user-round"></i><input type="text" name="username" autocomplete="username" placeholder="输入管理员账号" required></div></label>
+                <label class="form-field"><span>密码</span><div class="input-wrap"><i data-lucide="key-round"></i><input type="password" name="password" autocomplete="current-password" placeholder="输入访问密码" required></div></label>
+                <button class="btn btn-primary submit-button" type="submit"><span>登录</span><i data-lucide="arrow-up-right"></i></button>
+            </form>
+            <div class="auth-hint"><i data-lucide="lock-keyhole"></i><span>默认本地账号：atlas / pulse2025</span></div>
+        </div>
+        <div class="auth-footnote">演唱会数据分析系统<br>项目管理入口</div>
+    </section>
+</main>
+{% endblock %}
