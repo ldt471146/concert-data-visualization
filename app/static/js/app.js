@@ -1,0 +1,490 @@
+(() => {
+    const page = document.body.dataset.page;
+    const charts = new Map();
+    const storageKeys = {
+        favorites: 'pulseAtlasFavorites',
+        comparison: 'pulseAtlasComparison',
+        preferences: 'pulseAtlasPreferences',
+    };
+    const concertIndex = new Map();
+
+    const refreshIcons = () => {
+        if (window.lucide) window.lucide.createIcons({ attrs: { 'stroke-width': 1.55 } });
+    };
+
+    const escapeHTML = (value) => String(value ?? '').replace(/[&<>'"]/g, (char) => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#039;', '"': '&quot;'
+    }[char]));
+    const formatNumber = (value) => Number(value || 0).toLocaleString('zh-CN');
+    const formatDate = (value) => value ? new Date(value).toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' }).replace('/', '.') : '--';
+    const toast = (message, type = 'success') => {
+        const stack = document.querySelector('.flash-stack') || document.body.appendChild(Object.assign(document.createElement('div'), { className: 'flash-stack' }));
+        const item = document.createElement('div');
+        item.className = `toast toast-${type}`;
+        item.textContent = message;
+        stack.appendChild(item);
+        window.setTimeout(() => item.remove(), 3600);
+    };
+
+    const readStorage = (key, fallback) => {
+        try {
+            const value = JSON.parse(window.localStorage.getItem(key));
+            return value ?? fallback;
+        } catch (error) {
+            return fallback;
+        }
+    };
+    const writeStorage = (key, value) => window.localStorage.setItem(key, JSON.stringify(value));
+    const getFavorites = () => readStorage(storageKeys.favorites, []).map(Number).filter(Number.isFinite);
+    const getComparison = () => readStorage(storageKeys.comparison, []).filter((item) => item && item.id);
+    const getPreferences = () => {
+        const saved = readStorage(storageKeys.preferences, {});
+        return { city: '全部', budget: '', status: '全部', artist: '全部', ...(saved && typeof saved === 'object' && !Array.isArray(saved) ? saved : {}) };
+    };
+    const hasPreferences = (preferences = getPreferences()) => Boolean(
+        (preferences.city && preferences.city !== '全部') || preferences.budget ||
+        (preferences.status && preferences.status !== '全部') || (preferences.artist && preferences.artist !== '全部')
+    );
+    const buildQuery = (values) => new URLSearchParams(Object.entries(values).filter(([, value]) => value && value !== '全部')).toString();
+
+    const observeReveal = () => {
+        const nodes = document.querySelectorAll('[data-reveal]');
+        if (!('IntersectionObserver' in window)) {
+            nodes.forEach((node) => node.classList.add('is-visible'));
+            return;
+        }
+        const observer = new IntersectionObserver((entries, instance) => {
+            entries.forEach((entry) => {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('is-visible');
+                    instance.unobserve(entry.target);
+                }
+            });
+        }, { threshold: 0.08 });
+        nodes.forEach((node) => observer.observe(node));
+    };
+
+    const initTilt = () => {
+        if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+        document.querySelectorAll('.tilt-card').forEach((card) => {
+            card.addEventListener('pointermove', (event) => {
+                const rect = card.getBoundingClientRect();
+                const x = (event.clientX - rect.left) / rect.width - .5;
+                const y = (event.clientY - rect.top) / rect.height - .5;
+                card.style.transform = `perspective(900px) rotateX(${y * -1.2}deg) rotateY(${x * 1.2}deg)`;
+            });
+            card.addEventListener('pointerleave', () => { card.style.transform = ''; });
+        });
+    };
+
+    const initMobileMenu = () => {
+        const trigger = document.querySelector('[data-mobile-menu]');
+        const rail = document.querySelector('.side-rail');
+        if (!trigger || !rail) return;
+        trigger.addEventListener('click', () => rail.classList.toggle('is-open'));
+        rail.querySelectorAll('a').forEach((link) => link.addEventListener('click', () => rail.classList.remove('is-open')));
+    };
+
+    const initAnchors = () => {
+        document.querySelectorAll('[data-scroll-target]').forEach((link) => {
+            link.addEventListener('click', () => {
+                document.querySelectorAll('.rail-link').forEach((item) => item.classList.remove('is-active'));
+                link.classList.add('is-active');
+            });
+        });
+    };
+
+    const fetchJSON = async (url, options = {}) => {
+        const response = await fetch(url, options);
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || '请求失败');
+        return payload;
+    };
+
+    const chartTheme = {
+        text: '#8a98a3', line: 'rgba(216,231,223,.12)', lime: '#dcff58', coral: '#ff835c',
+        cyan: '#5ed5c9', panel: '#101923', ink: '#eff7f0'
+    };
+    const chartText = { color: chartTheme.text, fontFamily: 'Fira Code', fontSize: 10 };
+    const chartTooltip = { backgroundColor: chartTheme.panel, borderColor: chartTheme.line, textStyle: { color: chartTheme.ink, fontFamily: 'Fira Code' } };
+    const getChart = (id) => {
+        const element = document.getElementById(id);
+        if (!element || !window.echarts) return null;
+        let chart = charts.get(id);
+        if (!chart) {
+            chart = window.echarts.init(element, null, { renderer: 'canvas' });
+            charts.set(id, chart);
+        }
+        return chart;
+    };
+    const renderEmptyChart = (id) => {
+        const chart = getChart(id);
+        if (!chart) return;
+        chart.clear();
+        chart.setOption({ graphic: { type: 'text', left: 'center', top: 'middle', style: { text: '暂无数据', fill: chartTheme.text, fontFamily: 'Fira Code', fontSize: 12 } } });
+    };
+    const optionForBars = (labels, values, color = chartTheme.lime, horizontal = false) => horizontal ? {
+        animationDuration: 500, grid: { left: 12, right: 28, top: 8, bottom: 12, containLabel: true }, tooltip: { ...chartTooltip, trigger: 'axis', axisPointer: { type: 'shadow' } },
+        xAxis: { type: 'value', splitLine: { lineStyle: { color: chartTheme.line } }, axisLabel: chartText, axisLine: { show: false } },
+        yAxis: { type: 'category', data: labels.slice().reverse(), axisTick: { show: false }, axisLine: { show: false }, axisLabel: { color: chartTheme.ink, fontFamily: 'Fira Sans', fontSize: 11 } },
+        series: [{ type: 'bar', data: values.slice().reverse(), barWidth: 10, itemStyle: { color }, label: { show: true, position: 'right', color, fontFamily: 'Fira Code', fontSize: 10 } }]
+    } : {
+        animationDuration: 500, grid: { left: 12, right: 12, top: 18, bottom: 18, containLabel: true }, tooltip: { ...chartTooltip, trigger: 'axis' },
+        xAxis: { type: 'category', data: labels, axisTick: { show: false }, axisLine: { lineStyle: { color: chartTheme.line } }, axisLabel: chartText },
+        yAxis: { type: 'value', splitLine: { lineStyle: { color: chartTheme.line } }, axisLabel: chartText, axisLine: { show: false } },
+        series: [{ type: 'bar', data: values, barWidth: 18, itemStyle: { color }, label: { show: true, position: 'top', color: chartTheme.ink, fontFamily: 'Fira Code', fontSize: 10 } }]
+    };
+
+    const renderCharts = (chartsData = {}) => {
+        const city = chartsData.city || [];
+        const cityChart = getChart('city-chart');
+        if (cityChart && city.length) cityChart.setOption(optionForBars(city.map((item) => item.name), city.map((item) => item.value), chartTheme.lime, true), true); else renderEmptyChart('city-chart');
+        const sentiment = chartsData.sentiment || [];
+        const sentimentChart = getChart('sentiment-chart');
+        if (sentimentChart && sentiment.some((item) => item.value)) sentimentChart.setOption({ animationDuration: 700, tooltip: { ...chartTooltip, trigger: 'item', formatter: '{b}<br/>{c} 条 / {d}%' }, series: [{ type: 'pie', radius: ['52%', '76%'], center: ['50%', '52%'], itemStyle: { borderColor: chartTheme.panel, borderWidth: 4 }, label: { show: true, color: chartTheme.ink, fontFamily: 'Fira Sans', fontSize: 11, formatter: '{b}\n{d}%' }, data: sentiment.map((item, index) => ({ name: item.name, value: item.value, itemStyle: { color: [chartTheme.lime, chartTheme.cyan, chartTheme.coral][index] } })) }] }, true); else renderEmptyChart('sentiment-chart');
+        const price = chartsData.price || [];
+        const priceChart = getChart('price-chart');
+        if (priceChart && price.length) priceChart.setOption(optionForBars(price.map((item) => item.name), price.map((item) => item.value), chartTheme.coral), true); else renderEmptyChart('price-chart');
+        const trend = chartsData.trend || [];
+        const trendChart = getChart('trend-chart');
+        if (trendChart && trend.length) trendChart.setOption({ animationDuration: 650, grid: { left: 8, right: 14, top: 14, bottom: 20, containLabel: true }, tooltip: { ...chartTooltip, trigger: 'axis' }, xAxis: { type: 'category', boundaryGap: false, data: trend.map((item) => item.name), axisTick: { show: false }, axisLine: { lineStyle: { color: chartTheme.line } }, axisLabel: chartText }, yAxis: { type: 'value', splitLine: { lineStyle: { color: chartTheme.line } }, axisLabel: chartText, axisLine: { show: false } }, series: [{ type: 'line', smooth: .3, data: trend.map((item) => item.value), symbol: 'circle', symbolSize: 7, lineStyle: { color: chartTheme.coral, width: 2 }, itemStyle: { color: chartTheme.coral, borderColor: chartTheme.panel, borderWidth: 2 }, areaStyle: { color: 'rgba(255,131,92,.1)' } }] }, true); else renderEmptyChart('trend-chart');
+        const region = chartsData.region || [];
+        const regionChart = getChart('region-chart');
+        if (regionChart && region.length) regionChart.setOption(optionForBars(region.map((item) => item.name), region.map((item) => item.value), chartTheme.cyan, true), true); else renderEmptyChart('region-chart');
+    };
+
+    const renderKeywords = (items) => {
+        const target = document.getElementById('keyword-cloud');
+        if (target) target.innerHTML = items.length ? items.map((item) => `<span title="出现 ${escapeHTML(item.value)} 次">${escapeHTML(item.name)}</span>`).join('') : '<div class="empty-state">暂无关键词</div>';
+    };
+    const saleClass = (status) => status === '售票中' ? 'sale-open' : status === '即将开售' ? 'sale-soon' : status === '已售罄' ? 'sale-sold' : '';
+
+    const renderMap = (payload = {}) => {
+        const items = payload.items || [];
+        const chart = getChart('map-chart');
+        if (!chart || !items.length) return renderEmptyChart('map-chart');
+        chart.setOption({ animationDuration: 600, grid: { left: 8, right: 8, top: 8, bottom: 8 }, tooltip: { ...chartTooltip, formatter: (params) => `${escapeHTML(params.data.name)}<br/>${params.data.value[2]} 场` }, xAxis: { type: 'value', min: 85, max: 130, show: false }, yAxis: { type: 'value', min: 18, max: 54, show: false }, series: [{ type: 'scatter', data: items.map((item) => ({ name: item.name, value: [item.longitude, item.latitude, item.value] })), symbolSize: (value) => Math.max(10, Math.min(28, value[2] * 5 + 8)), itemStyle: { color: chartTheme.lime, shadowBlur: 12, shadowColor: 'rgba(220,255,88,.45)' }, label: { show: true, position: 'right', color: chartTheme.ink, fontFamily: 'Fira Sans', fontSize: 10, formatter: '{b}' } }] }, true);
+    };
+    const renderMonthlyTrend = (payload = {}) => {
+        const items = payload.monthly || [];
+        const chart = getChart('monthly-trend-chart');
+        if (!chart || !items.length) return renderEmptyChart('monthly-trend-chart');
+        chart.setOption({ animationDuration: 650, grid: { left: 8, right: 12, top: 14, bottom: 20, containLabel: true }, tooltip: { ...chartTooltip, trigger: 'axis' }, legend: { top: 0, right: 0, textStyle: chartText, data: ['演出', '评论'] }, xAxis: { type: 'category', boundaryGap: false, data: items.map((item) => item.period), axisLabel: chartText, axisLine: { lineStyle: { color: chartTheme.line } } }, yAxis: { type: 'value', axisLabel: chartText, splitLine: { lineStyle: { color: chartTheme.line } }, axisLine: { show: false } }, series: [{ name: '演出', type: 'line', smooth: .25, data: items.map((item) => item.concerts), lineStyle: { color: chartTheme.lime }, itemStyle: { color: chartTheme.lime } }, { name: '评论', type: 'line', smooth: .25, data: items.map((item) => item.comments), lineStyle: { color: chartTheme.cyan }, itemStyle: { color: chartTheme.cyan } }] }, true);
+    };
+    const renderCalendar = (payload = {}) => {
+        const target = document.getElementById('calendar-grid');
+        if (!target) return;
+        const items = payload.items || [];
+        target.innerHTML = items.length ? items.map((item) => `<article class="calendar-cell"><strong>${escapeHTML(item.date)}</strong><span>${formatNumber(item.concerts)} 场</span><small>${escapeHTML((item.cities || []).join('、') || '未提供城市')}</small><small>${formatNumber(item.comments)} 条评论</small></article>`).join('') : '<div class="empty-state">暂无日历数据</div>';
+    };
+    const renderPriceAnalysis = (payload = {}) => {
+        const items = payload.ranges || [];
+        const chart = getChart('price-analysis-chart');
+        if (!chart || !items.length) return renderEmptyChart('price-analysis-chart');
+        chart.setOption(optionForBars(items.map((item) => item.range), items.map((item) => item.concerts), chartTheme.coral), true);
+    };
+    const renderTopics = (payload = {}) => {
+        const items = (payload.items || []).filter((item) => item.comments);
+        const chart = getChart('topics-chart');
+        if (!chart || !items.length) return renderEmptyChart('topics-chart');
+        chart.setOption(optionForBars(items.map((item) => item.topic), items.map((item) => item.comments), chartTheme.cyan, true), true);
+    };
+    const renderArtists = (payload = {}) => {
+        const items = (payload.items || []).slice().sort((a, b) => b.concerts - a.concerts).slice(0, 8);
+        const chart = getChart('artists-chart');
+        if (!chart || !items.length) return renderEmptyChart('artists-chart');
+        chart.setOption({ animationDuration: 600, grid: { left: 12, right: 24, top: 8, bottom: 12, containLabel: true }, tooltip: { ...chartTooltip, trigger: 'axis', axisPointer: { type: 'shadow' }, formatter: (params) => `${escapeHTML(params[0]?.name || '')}<br/>${params[0]?.value || 0} 场` }, xAxis: { type: 'value', splitLine: { lineStyle: { color: chartTheme.line } }, axisLabel: chartText, axisLine: { show: false } }, yAxis: { type: 'category', data: items.map((item) => item.artist).reverse(), axisLabel: { color: chartTheme.ink, fontFamily: 'Fira Sans', fontSize: 10 }, axisTick: { show: false }, axisLine: { show: false } }, series: [{ type: 'bar', data: items.map((item) => item.concerts).reverse(), barWidth: 10, itemStyle: { color: chartTheme.lime }, label: { show: true, position: 'right', color: chartTheme.lime, fontFamily: 'Fira Code', fontSize: 10 } }] }, true);
+    };
+    const renderExtendedAnalytics = (payloads) => {
+        renderMap(payloads[0]);
+        renderMonthlyTrend(payloads[1]);
+        renderCalendar(payloads[2]);
+        renderPriceAnalysis(payloads[3]);
+        renderTopics(payloads[4]);
+        renderArtists(payloads[5]);
+    };
+
+    const renderFilters = (meta, current) => {
+        const options = [['filter-artist', meta.artists], ['filter-city', meta.cities], ['filter-status', meta.statuses]];
+        options.forEach(([id, values]) => {
+            const select = document.getElementById(id);
+            if (!select) return;
+            const selected = current[select.name] || '全部';
+            select.innerHTML = '<option value="全部">全部</option>' + (values || []).map((value) => `<option value="${escapeHTML(value)}">${escapeHTML(value)}</option>`).join('');
+            select.value = selected;
+        });
+        [['preference-city', meta.cities], ['preference-status', meta.statuses], ['preference-artist', meta.artists]].forEach(([id, values]) => {
+            const select = document.getElementById(id);
+            if (!select) return;
+            const preference = getPreferences();
+            select.innerHTML = '<option value="全部">全部</option>' + (values || []).map((value) => `<option value="${escapeHTML(value)}">${escapeHTML(value)}</option>`).join('');
+            select.value = preference[select.name] || '全部';
+        });
+        const budget = document.getElementById('preference-budget');
+        if (budget) budget.value = getPreferences().budget || '';
+    };
+
+    const renderConcerts = (items) => {
+        const target = document.getElementById('concert-list');
+        if (!target) return;
+        concertIndex.clear();
+        items.forEach((item) => concertIndex.set(Number(item.id), item));
+        const favorites = getFavorites();
+        const comparison = getComparison();
+        target.innerHTML = items.length ? items.slice(0, 8).map((item) => {
+            const id = Number(item.id);
+            const favorite = favorites.includes(id);
+            const compared = comparison.some((entry) => Number(entry.id) === id);
+            return `<article class="schedule-item"><div class="schedule-date">${escapeHTML(item.show_date)}<small>${escapeHTML(item.show_weekday)}</small></div><div class="schedule-main"><h3>${escapeHTML(item.concert_name)}</h3><p><i data-lucide="map-pin"></i>${escapeHTML(item.city)} · ${escapeHTML(item.venue)}</p><span class="sale-status ${saleClass(item.sale_status)}">${escapeHTML(item.sale_status)}</span></div><div class="schedule-price">¥${formatNumber(item.min_price)}<small>起 / ${formatNumber(item.comment_count)} 评论</small></div><div class="schedule-actions"><button class="table-action concert-action ${favorite ? 'is-active' : ''}" type="button" data-concert-action="favorite" data-concert-id="${id}" title="${favorite ? '取消收藏' : '收藏这场演出'}" aria-label="${favorite ? '取消收藏' : '收藏这场演出'}"><i data-lucide="${favorite ? 'star' : 'star'}"></i></button><button class="table-action concert-action ${compared ? 'is-active' : ''}" type="button" data-concert-action="comparison" data-concert-id="${id}" title="${compared ? '移出对比' : '加入对比'}" aria-label="${compared ? '移出对比' : '加入对比'}"><i data-lucide="${compared ? 'check' : 'plus'}"></i></button></div></article>`;
+        }).join('') : '<div class="empty-state">当前筛选没有场次</div>';
+        refreshIcons();
+        renderFavorites();
+        renderComparison();
+        renderReminders(items);
+    };
+    const renderReminders = (items) => {
+        const target = document.getElementById('reminder-list');
+        if (!target) return;
+        const now = new Date();
+        const limit = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+        const upcoming = items.filter((item) => {
+            const date = new Date(item.show_time);
+            return item.sale_status === '即将开售' || (date >= now && date <= limit);
+        }).slice(0, 8);
+        target.innerHTML = upcoming.length ? upcoming.map((item) => `<article class="reminder-item"><div><strong>${escapeHTML(item.concert_name)}</strong><span>${escapeHTML(item.city)} · ${escapeHTML(item.show_date)}</span></div><span class="sale-status ${saleClass(item.sale_status)}">${escapeHTML(item.sale_status || '临近演出')}</span></article>`).join('') : '<div class="empty-state">暂无临近提醒</div>';
+    };
+    const renderFavorites = () => {
+        const count = document.getElementById('favorite-count');
+        const target = document.getElementById('favorite-list');
+        const favorites = getFavorites();
+        const items = favorites.map((id) => concertIndex.get(id)).filter(Boolean);
+        if (count) count.textContent = formatNumber(favorites.length);
+        if (!target) return;
+        target.innerHTML = items.length ? items.map((item) => `<button class="favorite-chip" type="button" data-favorite-remove="${Number(item.id)}" title="取消收藏"><span>${escapeHTML(item.concert_name)}</span><i data-lucide="x"></i></button>`).join('') : '<span>暂无当前场次收藏</span>';
+        refreshIcons();
+    };
+    const renderComparison = () => {
+        const target = document.getElementById('comparison-list');
+        if (!target) return;
+        const items = getComparison();
+        if (items.length < 2) {
+            target.innerHTML = '<div class="empty-state">从场次列表加入 2 至 3 场后开始对比</div>';
+            return;
+        }
+        const rows = [['艺人', (item) => item.artist_name], ['城市', (item) => item.city], ['演出时间', (item) => item.show_date], ['最低票价', (item) => `¥${formatNumber(item.min_price)}`], ['售票状态', (item) => item.sale_status], ['评论数', (item) => formatNumber(item.comment_count)]];
+        target.innerHTML = `<div class="comparison-table-wrap"><table class="comparison-table"><thead><tr><th>项目</th>${items.map((item) => `<th>${escapeHTML(item.concert_name)}<button class="table-action" type="button" data-comparison-remove="${Number(item.id)}" aria-label="移除 ${escapeHTML(item.concert_name)}" title="移除对比"><i data-lucide="x"></i></button></th>`).join('')}</tr></thead><tbody>${rows.map(([label, getter]) => `<tr><th>${label}</th>${items.map((item) => `<td>${escapeHTML(getter(item))}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+        refreshIcons();
+    };
+    const updateFavorite = (id) => {
+        const favorites = getFavorites();
+        const next = favorites.includes(id) ? favorites.filter((value) => value !== id) : [...favorites, id];
+        writeStorage(storageKeys.favorites, next);
+        renderConcerts([...concertIndex.values()]);
+        toast(next.includes(id) ? '已收藏这场演出' : '已取消收藏');
+    };
+    const updateComparison = (id) => {
+        const current = getComparison();
+        const exists = current.some((item) => Number(item.id) === id);
+        if (exists) writeStorage(storageKeys.comparison, current.filter((item) => Number(item.id) !== id));
+        else {
+            if (current.length >= 3) return toast('对比最多保留 3 场', 'error');
+            const item = concertIndex.get(id);
+            if (item) writeStorage(storageKeys.comparison, [...current, item]);
+        }
+        renderConcerts([...concertIndex.values()]);
+        toast(exists ? '已移出对比' : '已加入对比');
+    };
+
+    const renderComments = (items) => {
+        const target = document.getElementById('comment-list');
+        if (target) target.innerHTML = items.length ? items.map((item) => `<article class="comment-item"><p>${escapeHTML(item.comment_text)}</p><div class="comment-meta"><span>${escapeHTML(item.user_region)} / ${formatDate(item.comment_time)}</span><span class="comment-score">${item.sentiment_score ? Math.round(item.sentiment_score * 100) : '--'} 分</span></div></article>`).join('') : '<div class="empty-state">暂无评论样本</div>';
+    };
+    const renderRecommendations = (items) => {
+        const target = document.getElementById('recommend-list');
+        if (!target) return;
+        const preferenceNote = hasPreferences() ? '；符合你的偏好' : '';
+        target.innerHTML = items.length ? items.map((item, index) => `<article class="recommend-card"><div class="recommend-rank"><span>第 ${index + 1} 项</span><strong class="recommend-score">${escapeHTML(item.score)}</strong></div><div><h3>${escapeHTML(item.concert_name)}</h3><p>${escapeHTML(item.reason || '')}${preferenceNote}</p></div><div class="recommend-meta"><span>${escapeHTML(item.city)} · ${escapeHTML(item.show_date)}</span><strong>¥${formatNumber(item.min_price)}</strong></div></article>`).join('') : '<div class="empty-state">暂无推荐结果</div>';
+    };
+
+    const loadDashboard = async (query = '') => {
+        const stage = document.querySelector('.main-stage');
+        stage?.classList.add('is-loading');
+        const names = ['map', 'trend', 'calendar', 'prices', 'topics', 'artists'];
+        try {
+            const overviewPromise = fetchJSON(`/api/overview${query ? `?${query}` : ''}`);
+            const analyticsPromise = Promise.all(names.map((name) => fetchJSON(`/api/analytics/${name}${query ? `?${query}` : ''}`).catch((error) => ({ error }))));
+            const [payload, analytics] = await Promise.all([overviewPromise, analyticsPromise]);
+            const metrics = payload.metrics || {};
+            ['concerts', 'comments', 'cities', 'sentiment'].forEach((key) => { const node = document.getElementById(`metric-${key}`); if (node) node.textContent = formatNumber(metrics[key]); });
+            const hero = document.getElementById('hero-index');
+            if (hero) hero.textContent = formatNumber(metrics.sentiment);
+            const updated = document.getElementById('last-updated');
+            if (updated) updated.textContent = metrics.last_updated || '暂无';
+            renderFilters(payload.meta || {}, payload.meta?.filters || {});
+            renderCharts(payload.charts || {});
+            renderKeywords(payload.charts?.keywords || []);
+            renderConcerts(payload.concerts || []);
+            renderComments(payload.comments || []);
+            renderRecommendations(payload.recommendations || []);
+            renderExtendedAnalytics(analytics.map((item) => item.error ? {} : item));
+            if (analytics.some((item) => item.error)) toast('部分分析数据暂时不可用', 'error');
+            refreshIcons();
+        } catch (error) {
+            toast(error.message, 'error');
+        } finally {
+            stage?.classList.remove('is-loading');
+        }
+    };
+
+    const initDashboard = () => {
+        const form = document.getElementById('filter-form');
+        const buildFilterQuery = () => buildQuery(Object.fromEntries(new FormData(form).entries()));
+        const preferences = getPreferences();
+        form?.addEventListener('submit', (event) => { event.preventDefault(); loadDashboard(buildFilterQuery()); });
+        document.querySelector('[data-reset-filters]')?.addEventListener('click', () => { form.reset(); loadDashboard(); });
+        document.querySelector('[data-refresh]')?.addEventListener('click', () => loadDashboard(buildFilterQuery()));
+        document.getElementById('concert-list')?.addEventListener('click', (event) => {
+            const button = event.target.closest('[data-concert-action]');
+            if (!button) return;
+            const id = Number(button.dataset.concertId);
+            if (button.dataset.concertAction === 'favorite') updateFavorite(id); else updateComparison(id);
+        });
+        document.getElementById('favorite-list')?.addEventListener('click', (event) => {
+            const button = event.target.closest('[data-favorite-remove]');
+            if (button) updateFavorite(Number(button.dataset.favoriteRemove));
+        });
+        document.getElementById('comparison-list')?.addEventListener('click', (event) => {
+            const button = event.target.closest('[data-comparison-remove]');
+            if (!button) return;
+            writeStorage(storageKeys.comparison, getComparison().filter((item) => Number(item.id) !== Number(button.dataset.comparisonRemove)));
+            renderComparison();
+            renderConcerts([...concertIndex.values()]);
+        });
+        document.querySelector('[data-clear-comparison]')?.addEventListener('click', () => { writeStorage(storageKeys.comparison, []); renderComparison(); renderConcerts([...concertIndex.values()]); });
+        document.getElementById('preference-form')?.addEventListener('submit', (event) => {
+            event.preventDefault();
+            const values = Object.fromEntries(new FormData(event.currentTarget).entries());
+            writeStorage(storageKeys.preferences, values);
+            toast('偏好已保存');
+            loadDashboard(buildQuery({ city: values.city, max_price: values.budget, status: values.status, artist: values.artist }));
+        });
+        document.querySelector('[data-clear-preferences], #clear-preferences')?.addEventListener('click', () => {
+            writeStorage(storageKeys.preferences, { city: '全部', budget: '', status: '全部', artist: '全部' });
+            const preferenceForm = document.getElementById('preference-form');
+            preferenceForm?.reset();
+            toast('偏好已清除');
+            loadDashboard();
+        });
+        window.addEventListener('resize', () => charts.forEach((chart) => chart.resize()));
+        initMobileMenu();
+        initAnchors();
+        loadDashboard(buildQuery({ city: preferences.city, max_price: preferences.budget, status: preferences.status, artist: preferences.artist }));
+    };
+
+    const renderImportReport = (report) => {
+        const target = document.getElementById('import-report');
+        if (!target) return;
+        if (!report || typeof report !== 'object') {
+            target.innerHTML = '<div class="empty-state">暂无预览报告</div>';
+            return;
+        }
+        const errors = report.errors || [];
+        const preview = report.preview || [];
+        target.innerHTML = `<div class="report-summary"><span>文件：${escapeHTML(report.filename || '未命名')}</span><span>类型：${escapeHTML(report.kind || '未知')}</span><span>总行数：${formatNumber(report.total_rows ?? report.input_count)}</span><span class="${report.valid === false || errors.length ? 'report-invalid' : 'report-valid'}">${report.valid === false || errors.length ? `发现 ${errors.length} 项问题` : '校验通过'}</span></div>${errors.length ? `<ul class="report-errors">${errors.map((item) => `<li>第 ${escapeHTML(item.row)} 行 / ${escapeHTML(item.field)}：${escapeHTML(item.message || item.code)}</li>`).join('')}</ul>` : ''}${preview.length ? `<div class="report-preview"><table><thead><tr>${Object.keys(preview[0]).map((key) => `<th>${escapeHTML(key)}</th>`).join('')}</tr></thead><tbody>${preview.slice(0, 5).map((row) => `<tr>${Object.values(row).map((value) => `<td>${escapeHTML(value)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>` : ''}`;
+    };
+    const renderJobDetail = (job) => {
+        const target = document.getElementById('job-detail');
+        if (!target) return;
+        target.hidden = false;
+        target.innerHTML = job ? `<div class="job-detail-head"><strong>任务 #${escapeHTML(job.id)}</strong><button class="table-action" type="button" data-close-job-detail aria-label="关闭任务详情">关闭</button></div><dl>${[['任务', job.job_type], ['状态', job.status], ['输入', job.input_count], ['成功', job.success_count], ['异常', job.failed_count], ['启动时间', job.started_at], ['完成时间', job.finished_at || '未完成'], ['结果', job.message]].map(([key, value]) => `<div><dt>${key}</dt><dd>${escapeHTML(value)}</dd></div>`).join('')}</dl>` : '<div class="empty-state">暂无任务详情</div>';
+    };
+    const renderJobs = (items) => {
+        const body = document.getElementById('jobs-body');
+        if (!body) return;
+        const label = { success: '完成', failed: '失败', running: '运行中' };
+        body.innerHTML = items.length ? items.map((job) => `<tr><td><span class="job-name">${escapeHTML(job.job_type)}</span></td><td><span class="job-status status-${escapeHTML(job.status)}">${label[job.status] || escapeHTML(job.status)}</span></td><td>${formatNumber(job.input_count)}</td><td>${formatNumber(job.success_count)}</td><td>${formatNumber(job.failed_count)}</td><td class="mono">${escapeHTML((job.started_at || '').slice(0, 16).replace('T', ' '))}</td><td>${escapeHTML(job.message)}</td><td><button class="table-action" type="button" data-job-detail="${Number(job.id)}">查看详情</button></td></tr>`).join('') : '<tr><td colspan="8" class="table-empty">暂无运行记录</td></tr>';
+    };
+
+    const initAdmin = () => {
+        const refreshJobs = async () => {
+            try { renderJobs((await fetchJSON('/admin/api/jobs')).items || []); } catch (error) { toast(error.message, 'error'); }
+        };
+        const previewImport = async () => {
+            const form = document.getElementById('import-form');
+            const file = form?.querySelector('input[type="file"]')?.files?.[0];
+            if (!file) return toast('请先选择 CSV 文件', 'error');
+            try { renderImportReport((await fetchJSON('/admin/api/import/preview', { method: 'POST', body: new FormData(form) })).report); } catch (error) { toast(error.message, 'error'); }
+        };
+        document.querySelector('[data-refresh-jobs]')?.addEventListener('click', refreshJobs);
+        document.querySelector('[data-preview-import]')?.addEventListener('click', previewImport);
+        document.querySelector('#import-form input[type="file"]')?.addEventListener('change', (event) => {
+            const label = document.querySelector('[data-file-name]');
+            if (label) label.textContent = event.target.files?.[0]?.name || '选择 CSV 文件';
+        });
+        document.getElementById('jobs-body')?.addEventListener('click', async (event) => {
+            const detailButton = event.target.closest('[data-job-detail]');
+            if (detailButton) {
+                try { renderJobDetail((await fetchJSON(`/admin/api/jobs/${Number(detailButton.dataset.jobDetail)}`)).job); } catch (error) { toast(error.message, 'error'); }
+            }
+            if (event.target.closest('[data-close-job-detail]')) {
+                const detail = document.getElementById('job-detail');
+                if (detail) detail.hidden = true;
+            }
+        });
+        document.getElementById('job-detail')?.addEventListener('click', (event) => {
+            if (event.target.closest('[data-close-job-detail]')) event.currentTarget.hidden = true;
+        });
+        document.querySelector('[data-run-analysis]')?.addEventListener('click', async (event) => {
+            const button = event.currentTarget;
+            button.disabled = true;
+            try { await fetchJSON('/admin/api/analyze', { method: 'POST' }); toast('分析任务已完成'); await refreshJobs(); } catch (error) { toast(error.message, 'error'); } finally { button.disabled = false; }
+        });
+        document.querySelector('[data-seed]')?.addEventListener('click', async (event) => {
+            const button = event.currentTarget;
+            button.disabled = true;
+            try { const result = await fetchJSON('/admin/api/seed', { method: 'POST' }); toast(result.result.seeded ? '演示快照已写入' : '数据库已有演示数据'); await refreshJobs(); } catch (error) { toast(error.message, 'error'); } finally { button.disabled = false; }
+        });
+        document.getElementById('import-form')?.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const form = event.currentTarget;
+            const button = form.querySelector('button[type="submit"]');
+            button.disabled = true;
+            try {
+                const result = await fetchJSON('/admin/api/import', { method: 'POST', body: new FormData(form) });
+                renderImportReport(result.report || result.result);
+                toast('CSV 导入已完成');
+                await refreshJobs();
+                form.reset();
+                const label = document.querySelector('[data-file-name]');
+                if (label) label.textContent = '选择 CSV 文件';
+            } catch (error) { toast(error.message, 'error'); } finally { button.disabled = false; }
+        });
+        document.getElementById('edit-concert-form')?.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const form = event.currentTarget;
+            const id = document.getElementById('edit-concert-id').value;
+            const payload = {};
+            [['edit-concert-name', 'name'], ['edit-concert-venue', 'venue'], ['edit-concert-time', 'time'], ['edit-concert-price', 'price_text'], ['edit-concert-status', 'sale_status']].forEach(([field, key]) => {
+                const value = document.getElementById(field)?.value;
+                if (value) payload[key] = value;
+            });
+            const result = document.getElementById('edit-result');
+            try {
+                const response = await fetchJSON(`/admin/api/concerts/${Number(id)}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                if (result) { result.className = 'edit-result is-success'; result.textContent = `记录 #${response.concert.id} 已更新`; }
+                toast('场次记录已更新');
+                await refreshJobs();
+            } catch (error) {
+                if (result) { result.className = 'edit-result is-error'; result.textContent = error.message; }
+                toast(error.message, 'error');
+            }
+        });
+        refreshJobs();
+    };
+
+    refreshIcons();
+    observeReveal();
+    initTilt();
+    if (page === 'dashboard') initDashboard();
+    if (page === 'admin') initAdmin();
+})();

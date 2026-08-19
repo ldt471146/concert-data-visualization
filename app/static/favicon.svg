@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="Pulse Atlas">
+  <rect width="32" height="32" fill="#090e14"/>
+  <rect x="8" y="8" width="16" height="16" fill="#dcff58"/>
+  <path d="M5 16h5m12 0h5" stroke="#090e14" stroke-width="2"/>
+</svg>
