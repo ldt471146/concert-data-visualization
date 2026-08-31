@@ -22,6 +22,7 @@ class ConcertInfo(db.Model):
     max_price = db.Column(db.Numeric(10, 2), nullable=True)
     sale_status = db.Column(db.String(30), nullable=False, default="待定")
     source_url = db.Column(db.String(500), nullable=False, default="local://data/raw/concerts.csv")
+    source_type = db.Column(db.String(40), nullable=False, default="未标注", index=True)
     collected_at = db.Column(db.DateTime, nullable=False, default=utcnow)
     created_at = db.Column(db.DateTime, nullable=False, default=utcnow)
 
@@ -57,6 +58,7 @@ class ConcertInfo(db.Model):
             "max_price": float(self.max_price) if self.max_price is not None else None,
             "sale_status": self.sale_status,
             "source_url": self.source_url,
+            "source_type": self.source_type,
             "comment_count": self.comment_count,
         }
 

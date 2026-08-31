@@ -109,6 +109,7 @@ def import_csv(stream, kind, filename=""):
                     max_price=max_price,
                     sale_status=_value(row, "sale_status") or "待定",
                     source_url=_value(row, "source_url") or "local://data/raw/concerts.csv",
+                    source_type=_value(row, "source_type") or "未标注",
                     collected_at=parse_datetime(_value(row, "collected_at")),
                 )
                 db.session.add(concert)
