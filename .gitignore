@@ -36,3 +36,4 @@ data/raw/damai_full_comments.csv
 data/raw/damai_music_concerts.csv
 data/raw/damai_music_comments.csv
 data/raw/damai_comments.csv
+data/raw/ov*.json
