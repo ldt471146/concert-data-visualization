@@ -57,7 +57,7 @@ set DATABASE_URL=mysql+pymysql://用户名:密码@127.0.0.1:3306/concert_analysi
 - `damai_full_comments.csv`：大麦场次真实评论 118412 条（每条挂具体场次，与演出直接相关）。
 - `comments_wyy_merged.csv`：网易云歌手热评 49060 条（按歌手关联艺人）。
 - `comments_social_merged.csv`：B站"XX 演唱会"视频评论 1069 条（含观演现场讨论）。
-- 前端支持**按分类筛选**（可聚焦演唱会主题）；每条记录保留 `source_url` 与 `collected_at` 可复查。
+- 前端支持**按分类筛选**，且**默认只展示演唱会分类**（1062 场）；选择「全部」可查看全库 22618 场。每条记录保留 `source_url` 与 `collected_at` 可复查。
 
 数据脚本：
 
