@@ -451,6 +451,28 @@ def _cacheable(endpoint, data_func, ttl=300, scope=""):
     return _analytics_response(data)
 
 
+@main.get("/api/analytics/all")
+def analytics_all():
+    """批量返回全部 14 项分析（共享一次查询上下文, 避免前端 14 个并发请求各自重算）。"""
+    def build(c, m, d):
+        return {
+            "map": map_data(c),
+            "trend": trend_data(c, m),
+            "calendar": calendar_data(c, m),
+            "prices": price_data(c, m, d),
+            "topics": topic_data(m),
+            "artists": artist_data(c, m, limit=10),
+            "sources": sources_data(c),
+            "engagement": price_data(c, m, d).get("engagement", [])[:10],
+            "sentiment": sentiment_distribution(m),
+            "weekdays": weekday_distribution(c),
+            "status": sale_status_data(c),
+            "platforms": platform_data(m),
+            "venues": venue_data(c),
+        }
+    return _cacheable("analytics_all", build)
+
+
 @main.get("/api/analytics/map")
 def analytics_map():
     return _cacheable("map", lambda c, m, d: map_data(c))

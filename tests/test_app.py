@@ -277,3 +277,17 @@ def test_new_analytics_charts(client):
     pl = client.get("/api/analytics/platforms").json
     assert pl["total"] > 0
     assert pl["items"] and all(item["comments"] > 0 for item in pl["items"])
+
+
+def test_analytics_all_batch(client):
+    """批量分析接口: 一次返回全部 14 组分析数据。"""
+    resp = client.get("/api/analytics/all")
+    assert resp.status_code == 200
+    data = resp.json
+    # 关键分组齐全
+    for key in ("map", "trend", "calendar", "prices", "topics", "artists", "sources", "engagement", "sentiment", "weekdays", "status", "platforms", "venues"):
+        assert key in data, key
+    # 批量接口不额外携带缓存标志影响结构
+    assert isinstance(data["map"], dict)
+    assert isinstance(data["weekdays"], dict)
+    assert len(data["weekdays"].get("items", [])) == 7

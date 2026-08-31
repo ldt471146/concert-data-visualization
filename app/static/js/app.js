@@ -299,21 +299,25 @@ const calendarState = { year: new Date().getFullYear(), month: new Date().getMon
         if (!chart || !items.length) return renderEmptyChart('venue-chart');
         chart.setOption(optionForBars(items.map((item) => (item.venue.length > 10 ? `${item.venue.slice(0, 10)}…` : item.venue)), items.map((item) => item.concerts), chartTheme.coral, true), true);
     };
-    const renderExtendedAnalytics = (payloads) => {
-        renderMap(payloads[0]);
-        renderMonthlyTrend(payloads[1]);
-        renderCalendar(payloads[2]);
-        renderPriceAnalysis(payloads[3]);
-        renderTopics(payloads[4]);
-        renderArtists(payloads[5]);
-        renderSources(payloads[6]);
-        renderCityPrices(payloads[3]);
-        renderEngagement(payloads[7]);
-        renderSentimentDist(payloads[8]);
-        renderWeekdays(payloads[9]);
-        renderStatus(payloads[10]);
-        renderPlatforms(payloads[11]);
-        renderVenues(payloads[12]);
+    const renderExtendedAnalytics = (data = {}) => {
+        if (data.error) {
+            ['map-chart', 'monthly-trend-chart', 'price-analysis-chart', 'topics-chart', 'artists-chart', 'sentiment-dist-chart', 'weekday-chart', 'status-chart', 'platform-chart', 'venue-chart', 'engagement-chart', 'city-price-chart'].forEach((id) => renderEmptyChart(id));
+            return;
+        }
+        renderMap(data.map || {});
+        renderMonthlyTrend(data.trend || {});
+        renderCalendar(data.calendar || {});
+        renderPriceAnalysis(data.prices || {});
+        renderTopics(data.topics || {});
+        renderArtists(data.artists || {});
+        renderSources(data.sources || {});
+        renderCityPrices(data.prices || {});
+        renderEngagement({ items: data.engagement || [] });
+        renderSentimentDist(data.sentiment || {});
+        renderWeekdays(data.weekdays || {});
+        renderStatus(data.status || {});
+        renderPlatforms(data.platforms || {});
+        renderVenues(data.venues || {});
     };
 
     const renderFilters = (meta, current) => {
@@ -421,11 +425,12 @@ const calendarState = { year: new Date().getFullYear(), month: new Date().getMon
     const loadDashboard = async (query = '') => {
         const stage = document.querySelector('.main-stage');
         stage?.classList.add('is-loading');
-        const names = ['map', 'trend', 'calendar', 'prices', 'topics', 'artists', 'sources', 'engagement', 'sentiment', 'weekdays', 'status', 'platforms', 'venues'];
         try {
-            const overviewPromise = fetchJSON(`/api/overview${query ? `?${query}` : ''}`);
-            const analyticsPromise = Promise.all(names.map((name) => fetchJSON(`/api/analytics/${name}${query ? `?${query}` : ''}`).catch((error) => ({ error }))));
-            const [payload, analytics] = await Promise.all([overviewPromise, analyticsPromise]);
+            // 批量分析接口: 一次请求返回全部 14 项分析, 避免 14 个并发请求各自重算拖垮页面
+            const [payload, analytics] = await Promise.all([
+                fetchJSON(`/api/overview${query ? `?${query}` : ''}`),
+                fetchJSON(`/api/analytics/all${query ? `?${query}` : ''}`).catch((error) => ({ error: true })),
+            ]);
             const metrics = payload.metrics || {};
             ['concerts', 'comments', 'cities', 'sentiment'].forEach((key) => { const node = document.getElementById(`metric-${key}`); if (node) node.textContent = formatNumber(metrics[key]); });
             const hero = document.getElementById('hero-index');
@@ -438,8 +443,8 @@ const calendarState = { year: new Date().getFullYear(), month: new Date().getMon
             renderConcerts(payload.concerts || []);
             renderComments(payload.comments || []);
             renderRecommendations(payload.recommendations || []);
-            renderExtendedAnalytics(analytics.map((item) => item.error ? {} : item));
-            if (analytics.some((item) => item.error)) toast('部分分析数据暂时不可用', 'error');
+            renderExtendedAnalytics(analytics);
+            if (analytics?.error) toast('部分分析数据暂时不可用', 'error');
             refreshIcons();
         } catch (error) {
             toast(error.message, 'error');
