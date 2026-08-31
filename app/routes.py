@@ -43,7 +43,7 @@ def request_filters():
     args = request.args
     return {
         "artist": args.get("artist", "全部"),
-        "category": args.get("category", "全部"),
+        "category": args.get("category", "演唱会"),
         "city": args.get("city", "全部"),
         "status": args.get("status", "全部"),
         "start": _date_value(args.get("start")),
