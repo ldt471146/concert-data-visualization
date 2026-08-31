@@ -267,6 +267,38 @@ const calendarState = { year: new Date().getFullYear(), month: new Date().getMon
         const items = (payload.items || []).filter((item) => item.concerts > 0);
         target.innerHTML = items.length ? items.map((item) => `<article class="source-item"><span class="source-name">${escapeHTML(item.source)}</span><span class="source-count">${formatNumber(item.concerts)} 场</span><span class="source-meta">覆盖 ${formatNumber(item.artists)} 位艺人 / ${formatNumber(item.cities)} 个城市</span></article>`).join('') : '<div class="empty-state">暂无来源数据</div>';
     };
+    const renderSentimentDist = (payload = {}) => {
+        const items = payload.items || [];
+        const chart = getChart('sentiment-dist-chart');
+        if (!chart || !items.length) return renderEmptyChart('sentiment-dist-chart');
+        chart.setOption({ ...optionForBars(items.map((item) => item.bucket), items.map((item) => item.comments), chartTheme.lime), tooltip: { ...chartTooltip, trigger: 'axis', formatter: (params) => `${escapeHTML(params[0]?.name || '')} 分<br/>${formatNumber(params[0]?.value || 0)} 条评论` } }, true);
+    };
+    const renderWeekdays = (payload = {}) => {
+        const items = payload.items || [];
+        const chart = getChart('weekday-chart');
+        if (!chart || !items.length) return renderEmptyChart('weekday-chart');
+        chart.setOption({ ...optionForBars(items.map((item) => item.weekday), items.map((item) => item.concerts), chartTheme.cyan), tooltip: { ...chartTooltip, trigger: 'axis', formatter: (params) => `${escapeHTML(params[0]?.name || '')}<br/>${formatNumber(params[0]?.value || 0)} 场演出` } }, true);
+    };
+    const renderStatus = (payload = {}) => {
+        const items = payload.items || [];
+        const chart = getChart('status-chart');
+        if (!chart || !items.length) return renderEmptyChart('status-chart');
+        const palette = [chartTheme.lime, chartTheme.coral, chartTheme.cyan, chartTheme.gold || '#e8c468', '#8ab4f8'];
+        chart.setOption({ animationDuration: 700, tooltip: { ...chartTooltip, trigger: 'item', formatter: '{b}<br/>{c} 场 / {d}%' }, legend: { top: 0, left: 0, textStyle: chartText }, series: [{ type: 'pie', radius: ['46%', '72%'], center: ['50%', '56%'], itemStyle: { borderColor: chartTheme.panel, borderWidth: 4 }, label: { color: chartTheme.ink, fontFamily: 'Fira Sans', fontSize: 11, formatter: '{b}\n{d}%' }, data: items.map((item, index) => ({ name: item.status, value: item.concerts, itemStyle: { color: palette[index % palette.length] } })) }] }, true);
+    };
+    const renderPlatforms = (payload = {}) => {
+        const items = payload.items || [];
+        const chart = getChart('platform-chart');
+        if (!chart || !items.length) return renderEmptyChart('platform-chart');
+        const palette = [chartTheme.cyan, chartTheme.lime, chartTheme.coral, '#8ab4f8', chartTheme.gold || '#e8c468'];
+        chart.setOption({ animationDuration: 700, tooltip: { ...chartTooltip, trigger: 'item', formatter: '{b}<br/>{c} 条 / {d}%' }, legend: { top: 0, left: 0, textStyle: chartText }, series: [{ type: 'pie', radius: ['46%', '72%'], center: ['50%', '56%'], itemStyle: { borderColor: chartTheme.panel, borderWidth: 4 }, label: { color: chartTheme.ink, fontFamily: 'Fira Sans', fontSize: 11, formatter: '{b}\n{d}%' }, data: items.map((item, index) => ({ name: item.platform, value: item.comments, itemStyle: { color: palette[index % palette.length] } })) }] }, true);
+    };
+    const renderVenues = (payload = {}) => {
+        const items = payload.items || [];
+        const chart = getChart('venue-chart');
+        if (!chart || !items.length) return renderEmptyChart('venue-chart');
+        chart.setOption(optionForBars(items.map((item) => (item.venue.length > 10 ? `${item.venue.slice(0, 10)}…` : item.venue)), items.map((item) => item.concerts), chartTheme.coral, true), true);
+    };
     const renderExtendedAnalytics = (payloads) => {
         renderMap(payloads[0]);
         renderMonthlyTrend(payloads[1]);
@@ -277,6 +309,11 @@ const calendarState = { year: new Date().getFullYear(), month: new Date().getMon
         renderSources(payloads[6]);
         renderCityPrices(payloads[3]);
         renderEngagement(payloads[7]);
+        renderSentimentDist(payloads[8]);
+        renderWeekdays(payloads[9]);
+        renderStatus(payloads[10]);
+        renderPlatforms(payloads[11]);
+        renderVenues(payloads[12]);
     };
 
     const renderFilters = (meta, current) => {
@@ -384,7 +421,7 @@ const calendarState = { year: new Date().getFullYear(), month: new Date().getMon
     const loadDashboard = async (query = '') => {
         const stage = document.querySelector('.main-stage');
         stage?.classList.add('is-loading');
-        const names = ['map', 'trend', 'calendar', 'prices', 'topics', 'artists', 'sources', 'engagement'];
+        const names = ['map', 'trend', 'calendar', 'prices', 'topics', 'artists', 'sources', 'engagement', 'sentiment', 'weekdays', 'status', 'platforms', 'venues'];
         try {
             const overviewPromise = fetchJSON(`/api/overview${query ? `?${query}` : ''}`);
             const analyticsPromise = Promise.all(names.map((name) => fetchJSON(`/api/analytics/${name}${query ? `?${query}` : ''}`).catch((error) => ({ error }))));

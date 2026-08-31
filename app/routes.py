@@ -9,10 +9,15 @@ from .analytics import (
     artist_data,
     calendar_data,
     map_data,
+    platform_data,
     price_data,
+    sale_status_data,
+    sentiment_distribution,
+    sources_data,
     topic_data,
     trend_data,
-    sources_data,
+    venue_data,
+    weekday_distribution,
 )
 from .models import CommentInfo, ConcertInfo, TicketPriceDetail
 from .recommend import build_recommendations
@@ -489,3 +494,50 @@ def analytics_engagement():
 @main.get("/api/analytics/sources")
 def analytics_sources():
     return _cacheable("sources", lambda c, m, d: sources_data(c))
+
+
+@main.get("/api/analytics/sentiment")
+def analytics_sentiment():
+    return _cacheable("sentiment", lambda c, m, d: sentiment_distribution(m))
+
+
+@main.get("/api/analytics/weekdays")
+def analytics_weekdays():
+    return _cacheable("weekdays", lambda c, m, d: weekday_distribution(c))
+
+
+@main.get("/api/analytics/status")
+def analytics_status():
+    return _cacheable("status", lambda c, m, d: sale_status_data(c))
+
+
+@main.get("/api/analytics/platforms")
+def analytics_platforms():
+    """评论平台构成（全量 SQL 聚合，不受评论采样上限影响）。"""
+    from sqlalchemy import func
+
+    def build(c, m, d):
+        # 复用 analytics 的平台识别规则
+        rules = [
+            ("网易云音乐", ("163.com",)),
+            ("大麦网", ("damai",)),
+            ("B站", ("bilibili",)),
+        ]
+        total = CommentInfo.query.count()
+        items = []
+        for name, needles in rules:
+            counts = 0
+            for needle in needles:
+                counts += CommentInfo.query.filter(CommentInfo.source_url.like(f"%{needle}%")).count()
+            items.append({"platform": name, "comments": counts})
+        items.append({"platform": "本地/其他", "comments": max(0, total - sum(item["comments"] for item in items))})
+        items = [item for item in items if item["comments"] > 0]
+        items.sort(key=lambda item: -item["comments"])
+        return {"items": items, "total": total}
+
+    return _cacheable("platforms", build)
+
+
+@main.get("/api/analytics/venues")
+def analytics_venues():
+    return _cacheable("venues", lambda c, m, d: venue_data(c))

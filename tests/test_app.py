@@ -258,3 +258,22 @@ def test_artist_trend_endpoint(client):
     empty = client.get("/api/analytics/artist-trend")
     assert empty.status_code == 200
     assert empty.json["items"] == []
+
+
+def test_new_analytics_charts(client):
+    """新增 5 组分析图表接口（情感分布/星期/状态/平台/场馆）。"""
+    names = ["sentiment", "weekdays", "status", "platforms", "venues"]
+    for name in names:
+        resp = client.get(f"/api/analytics/{name}")
+        assert resp.status_code == 200, name
+        assert isinstance(resp.json.get("items"), list), name
+    # 情感分布分桶为 -1~1 五档
+    sent = client.get("/api/analytics/sentiment").json
+    assert any("消极" in item["bucket"] for item in sent["items"])
+    # 星期分布固定 7 天
+    wd = client.get("/api/analytics/weekdays").json
+    assert len(wd["items"]) == 7
+    # 平台构成含总评数 且 平台列表非空
+    pl = client.get("/api/analytics/platforms").json
+    assert pl["total"] > 0
+    assert pl["items"] and all(item["comments"] > 0 for item in pl["items"])

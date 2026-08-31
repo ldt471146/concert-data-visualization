@@ -345,3 +345,75 @@ def sources_data(concerts):
 
 
 aggregate_sources = sources_data
+
+
+WEEKDAY_NAMES = ("周一", "周二", "周三", "周四", "周五", "周六", "周日")
+
+
+def sentiment_distribution(comments, buckets=((-1.0, -0.6), (-0.6, -0.2), (-0.2, 0.2), (0.2, 0.6), (0.6, 1.0))):
+    """评论情感分数分布直方图（-1~1 分桶，负=消极、正=积极）。"""
+    labels = ("消极(-1~-0.6)", "偏消极(-0.6~-0.2)", "中性(-0.2~0.2)", "偏积极(0.2~0.6)", "积极(0.6~1)")
+    counts = Counter()
+    for comment in comments:
+        score = _number(_value(comment, "sentiment_score"))
+        if score is None:
+            continue
+        for (low, high), label in zip(buckets, labels):
+            if low <= score < high:
+                counts[label] += 1
+                break
+    items = [{"bucket": label, "comments": counts.get(label, 0)} for label in labels]
+    return {"items": items, "note": _empty_note(items, "情感分布")}
+
+
+def weekday_distribution(concerts):
+    """演唱会按星期分布（周一~周日场次数）。"""
+    counts = Counter()
+    for concert in concerts:
+        day = _date_value(_value(concert, "show_time"))
+        if day:
+            counts[day.weekday()] += 1
+    items = [
+        {"weekday": WEEKDAY_NAMES[idx], "concerts": counts[idx]}
+        for idx in range(7)
+    ]
+    return {"items": items, "note": _empty_note(items, "星期分布")}
+
+
+def sale_status_data(concerts):
+    """售票状态分布（售票中/已售罄/待定等）。"""
+    counts = Counter(_value(concert, "sale_status") or "未知" for concert in concerts)
+    items = [{"status": status, "concerts": count} for status, count in counts.most_common()]
+    return {"items": items, "total": sum(counts.values()), "note": _empty_note(items, "售票状态")}
+
+
+PLATFORM_RULES = (
+    ("网易云音乐", ("music.163", "163.com", "netease")),
+    ("大麦网", ("damai",)),
+    ("B站", ("bilibili", "b23")),
+)
+
+
+def _platform_of(comment):
+    url = _value(comment, "source_url") or ""
+    for name, needles in PLATFORM_RULES:
+        if any(n in url for n in needles):
+            return name
+    return "本地/其他"
+
+
+def platform_data(comments):
+    """评论来源平台构成（按 source_url 域名识别）。"""
+    counts = Counter(_platform_of(comment) for comment in comments)
+    items = [{"platform": platform, "comments": count} for platform, count in counts.most_common()]
+    return {"items": items, "total": sum(counts.values()), "note": _empty_note(items, "平台构成")}
+
+
+def venue_data(concerts, limit=10):
+    """热门场馆 Top N（按承办演唱会场次数）。"""
+    counts = Counter(_value(concert, "venue") for concert in concerts if _value(concert, "venue"))
+    items = [
+        {"venue": venue, "concerts": count}
+        for venue, count in counts.most_common(limit)
+    ]
+    return {"items": items, "note": _empty_note(items, "场馆")}
