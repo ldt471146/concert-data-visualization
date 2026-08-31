@@ -53,8 +53,8 @@ def request_filters():
     }
 
 
-def filter_concerts(filters):
-    query = ConcertInfo.query
+def _apply_filters(query, filters):
+    """把筛选条件应用到查询对象 (过滤部分, 不含价格)。"""
     if filters["artist"] and filters["artist"] != "全部":
         query = query.filter(ConcertInfo.artist_name == filters["artist"])
     if filters["category"] and filters["category"] != "全部":
@@ -67,6 +67,14 @@ def filter_concerts(filters):
         query = query.filter(ConcertInfo.show_time >= filters["start"])
     if filters["end"]:
         query = query.filter(ConcertInfo.show_time <= filters["end"])
+    return query
+
+
+def filter_concerts(filters, limit=None):
+    """返回过滤后的场次对象列表 (价格过滤在 Python 侧完成)。"""
+    query = _apply_filters(ConcertInfo.query, filters)
+    if limit:
+        query = query.limit(limit)
     filtered = []
     for concert in query.order_by(ConcertInfo.show_time.asc()).all():
         concert_min = float(concert.min_price) if concert.min_price is not None else None
@@ -79,18 +87,49 @@ def filter_concerts(filters):
     return filtered
 
 
-def _filtered_payload(filters):
-    concerts = filter_concerts(filters)
-    ids = {concert.id for concert in concerts}
-    comments = _load_comments_for_ids(ids)
+def _filtered_payload(filters, list_limit=60):
+    from sqlalchemy import func
+    # 1) 轻量查询: 仅取过滤后的场次 id/城市/票价, 不物化 2 万多个 ORM 对象
+    query = _apply_filters(ConcertInfo.query, filters)
+    rows = (
+        query.with_entities(
+            ConcertInfo.id,
+            ConcertInfo.city,
+            ConcertInfo.min_price,
+            ConcertInfo.collected_at,
+            func.count(CommentInfo.id),
+        )
+        .outerjoin(CommentInfo, CommentInfo.concert_id == ConcertInfo.id)
+        .group_by(ConcertInfo.id)
+        .all()
+    )
+    # 价格过滤(无法下推到 SQL 的 min/max 逻辑)在元组上完成
+    kept = []
+    for row in rows:
+        cid, city, min_price, collected_at, comments_count = row
+        cmin = float(min_price) if min_price is not None else None
+        cmax = cmin
+        if filters["min_price"] is not None and (cmax is None or cmax < filters["min_price"]):
+            continue
+        if filters["max_price"] is not None and (cmin is None or cmin > filters["max_price"]):
+            continue
+        kept.append(row)
+    ids = {r[0] for r in kept}
 
-    cities = Counter(concert.city for concert in concerts)
+    # 2) 统计聚合
+    cities = Counter(r[1] or "未知" for r in kept)
     price_bins = Counter()
-    for concert in concerts:
-        price = float(concert.min_price or 0)
+    for r in kept:
+        price = float(r[2] or 0)
         bucket = "0-499" if price < 500 else "500-999" if price < 1000 else "1000-1499" if price < 1500 else "1500+"
         price_bins[bucket] += 1
+    last_dt = max((r[3] for r in kept), default=None)
+    for concert in ConcertInfo.query.filter(ConcertInfo.id.in_(ids)).with_entities(ConcertInfo.collected_at).all():
+        if concert[0] and (last_dt is None or concert[0] > last_dt):
+            last_dt = concert[0]
 
+    # 3) 评论采样分析 (情感/词云/地区/月趋势)
+    comments = _load_comments_for_ids(ids, max_sample=1200)
     trend = Counter(comment.comment_time.strftime("%m月") for comment in comments if comment.comment_time)
     sentiment = Counter()
     regions = Counter(comment.user_region or "未提供" for comment in comments)
@@ -102,18 +141,19 @@ def _filtered_payload(filters):
         sentiment["正面" if score >= 0.6 else "负面" if score <= 0.4 else "中性"] += 1
         keywords.update(tokenize(comment.comment_text))
 
-    last_dt = None
-    for concert in concerts:
-        if concert.collected_at and (last_dt is None or concert.collected_at > last_dt):
-            last_dt = concert.collected_at
-    for comment in comments:
-        if comment.collected_at and (last_dt is None or comment.collected_at > last_dt):
-            last_dt = comment.collected_at
     last_updated = last_dt.strftime("%Y.%m.%d") if last_dt else "暂无"
     average_sentiment = round(total_sentiment / len(comments) * 100) if comments else 0
+
+    # 4) 展示列表仅截断前 list_limit 场 (避免 9MB JSON)
+    list_concerts = (
+        ConcertInfo.query.filter(ConcertInfo.id.in_(ids))
+        .order_by(ConcertInfo.show_time.asc())
+        .limit(list_limit)
+        .all()
+    )
     return {
         "metrics": {
-            "concerts": len(concerts),
+            "concerts": len(kept),
             "comments": len(comments),
             "cities": len(cities),
             "sentiment": average_sentiment,
@@ -127,7 +167,7 @@ def _filtered_payload(filters):
             "region": [{"name": key, "value": value} for key, value in regions.most_common(8)],
             "keywords": [{"name": key, "value": value} for key, value in keywords.most_common(14)],
         },
-        "concerts": [concert.to_dict() for concert in concerts],
+        "concerts": [concert.to_dict() for concert in list_concerts],
         "comments": [comment.to_dict() for comment in comments[:6]],
         "recommendations": build_recommendations(filters, limit=4),
     }
@@ -236,13 +276,46 @@ def _load_comments_for_ids(concert_ids, max_sample=3000):
 
 
 def _analytics_context():
+    from sqlalchemy import func
     filters = request_filters()
-    concerts = filter_concerts(filters)
-    concert_ids = {concert.id for concert in concerts}
+    query = _apply_filters(ConcertInfo.query, filters)
+    rows = (
+        query.with_entities(
+            ConcertInfo.id,
+            ConcertInfo.city,
+            ConcertInfo.min_price,
+            ConcertInfo.max_price,
+            ConcertInfo.sale_status,
+            ConcertInfo.show_time,
+            ConcertInfo.artist_name,
+            ConcertInfo.concert_name,
+            ConcertInfo.category,
+            ConcertInfo.venue,
+            ConcertInfo.source_url,
+            ConcertInfo.collected_at,
+            func.count(CommentInfo.id),
+        )
+        .outerjoin(CommentInfo, CommentInfo.concert_id == ConcertInfo.id)
+        .group_by(ConcertInfo.id)
+        .all()
+    )
+    kept = []
+    for r in rows:
+        cmin = float(r[2]) if r[2] is not None else None
+        cmax = float(r[3]) if r[3] is not None else cmin
+        if filters["min_price"] is not None and (cmax is None or cmax < filters["min_price"]):
+            continue
+        if filters["max_price"] is not None and (cmin is None or cmin > filters["max_price"]):
+            continue
+        kept.append(r)
+    concert_ids = {r[0] for r in kept}
+
+    # 轻量场次对象(供 analytics 读取字段): 只物化过滤后的场次
+    concerts = ConcertInfo.query.filter(ConcertInfo.id.in_(concert_ids)).all() if concert_ids else []
     comments = _load_comments_for_ids(concert_ids)
     details = []
     if concert_ids:
-        details = TicketPriceDetail.query.filter(TicketPriceDetail.concert_id.in_(concert_ids)).all()
+        details = TicketPriceDetail.query.filter(TicketPriceDetail.concert_id.in_(concert_ids)).limit(200).all()
     return filters, concerts, comments, details
 
 
