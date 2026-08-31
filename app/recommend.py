@@ -34,16 +34,25 @@ def build_recommendations(filters=None, limit=4):
         query = query.filter(ConcertInfo.show_time <= end)
 
     recommendations = []
-    # 使用 selectin 批量加载 comments, 避免逐场触发 N+1 查询
-    concerts_batch = query.options(
-        __import__("sqlalchemy.orm", fromlist=["selectinload"]).selectinload(ConcertInfo.comments)
-    ).order_by(ConcertInfo.show_time.asc()).all()
+    # 用 SQL 聚合统计评论数/点赞数, 避免全量加载 19 万评论对象到内存
+    from sqlalchemy import func
+    from .models import CommentInfo as _CI
+    agg_rows = {
+        row[0]: (row[1], row[2])
+        for row in query.join(_CI, _CI.concert_id == ConcertInfo.id, isouter=True)
+        .with_entities(
+            ConcertInfo.id,
+            func.count(_CI.id),
+            func.coalesce(func.sum(_CI.like_count), 0),
+        )
+        .group_by(ConcertInfo.id)
+        .all()
+    }
+    concerts_batch = query.order_by(ConcertInfo.show_time.asc()).all()
     for concert in concerts_batch:
         if not price_matches(concert, min_price, max_price):
             continue
-        comments = concert.comments
-        likes = sum(comment.like_count or 0 for comment in comments)
-        comment_count = len(comments)
+        comment_count, likes = agg_rows.get(concert.id, (0, 0))
         score = 54.0
         score += min(comment_count * 2.8, 19)
         score += min(likes / 120, 12)

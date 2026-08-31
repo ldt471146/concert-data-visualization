@@ -221,10 +221,11 @@ def _load_comments_for_ids(concert_ids, max_sample=3000):
         return []
     ids = list(concert_ids)
     base = CommentInfo.query.filter(CommentInfo.concert_id.in_(ids))
-    total = base.count()
-    if total <= max_sample:
+    # 用 LIMIT 探测总量是否超过采样上限, 避免全表 COUNT
+    probe = base.with_entities(CommentInfo.id).limit(max_sample + 1).all()
+    if len(probe) <= max_sample:
         return base.order_by(CommentInfo.comment_time.asc()).all()
-    # 一次性取出 id 列表后均匀抽样, 避免逐条 offset 查询
+    # 超过上限: 一次性取 id 列表后均匀抽样
     all_rows = base.with_entities(CommentInfo.id).all()
     all_ids = [row[0] for row in all_rows]
     step = max(1, len(all_ids) // max_sample)
