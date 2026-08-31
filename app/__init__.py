@@ -47,7 +47,9 @@ def create_app(test_config=None):
             snapshot = merged if merged.exists() else raw_dir / "concerts.csv"
             load_local_concert_snapshot(snapshot)
             comments_in = raw_dir / "comments_input.csv"
-            if comments_in.exists():
+            if comments_in.exists() and not db.session.query(
+                __import__("app.models", fromlist=["CommentInfo"]).CommentInfo.id
+            ).first():
                 load_local_comment_snapshot(comments_in)
 
     return app

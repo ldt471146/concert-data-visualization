@@ -268,7 +268,12 @@ def _average_sentiment(comments):
     return round(mean(scores), 4) if scores else None
 
 
-def artist_data(concerts, comments):
+def artist_data(concerts, comments, limit=50):
+    """艺人对比/热度榜。
+
+    limit 用于限制返回条数：热度榜场景只需 Top N。综合热度 = 场次 * 3 + 评论 * 2 + 点赞折算，
+    便于横向比较「哪个艺人更受关注」。
+    """
     by_artist = defaultdict(list)
     comments_by_concert = defaultdict(list)
     for comment in comments:
@@ -277,19 +282,25 @@ def artist_data(concerts, comments):
         by_artist[_value(concert, "artist_name", "未提供")].append(concert)
 
     items = []
-    for artist, artist_concerts in sorted(by_artist.items()):
+    for artist, artist_concerts in by_artist.items():
         linked = [comment for concert in artist_concerts for comment in comments_by_concert.get(_value(concert, "id"), [])]
         prices = [_number(_value(concert, "min_price")) for concert in artist_concerts]
         prices = [price for price in prices if price is not None]
+        comment_count = len(linked)
+        like_count = sum(_number(_value(comment, "like_count")) or 0 for comment in linked)
         items.append({
             "artist": artist,
             "concerts": len(artist_concerts),
             "cities": len({_value(concert, "city") for concert in artist_concerts if _value(concert, "city")}),
             "average_min_price": round(mean(prices), 2) if prices else None,
-            "comments": len(linked),
-            "likes": sum(_number(_value(comment, "like_count")) or 0 for comment in linked),
+            "comments": comment_count,
+            "likes": like_count,
             "average_sentiment": _average_sentiment(linked),
+            "heat": round(len(artist_concerts) * 3 + comment_count * 2 + min(like_count, 1000000) / 20000, 1),
         })
+    items.sort(key=lambda item: (-item["heat"], item["artist"]))
+    if limit:
+        items = items[:limit]
     return {
         "items": items,
         "sample_note": "当前筛选结果仅包含一位艺人，暂不具备横向比较意义" if len(items) == 1 else "",

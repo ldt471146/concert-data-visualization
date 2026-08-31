@@ -5,6 +5,7 @@ from flask import Blueprint, Response, jsonify, render_template, request
 from flask_login import current_user, login_required
 
 from .analysis import run_analysis
+from .cache import clear_cache
 from .extensions import db
 from .models import ConcertInfo, JobRun
 from .services import create_job, finish_job, import_csv, parse_prices, seed_demo_data
@@ -77,6 +78,7 @@ def import_data():
     job = create_job(f"import_{kind}")
     try:
         result = import_csv(uploaded.stream, kind, uploaded.filename)
+        clear_cache()
         finish_job(job, "success", result, "CSV 导入完成")
         return jsonify({"ok": True, "result": result, "report": result, "job": job.to_dict()})
     except Exception:
@@ -179,6 +181,7 @@ def update_concert(concert_id):
 
     try:
         db.session.commit()
+        clear_cache()
     except Exception:
         db.session.rollback()
         return jsonify({"error": "演唱会记录更新失败。"}), 500
@@ -194,6 +197,7 @@ def delete_concert(concert_id):
     try:
         db.session.delete(concert)
         db.session.commit()
+        clear_cache()
     except Exception:
         db.session.rollback()
         return jsonify({"error": "演唱会记录删除失败。"}), 500
@@ -206,6 +210,7 @@ def analyze():
     job = create_job("analysis")
     try:
         result = run_analysis()
+        clear_cache()
         finish_job(job, "success", result, "评论分析与统计已更新")
         return jsonify({"ok": True, "result": result, "job": job.to_dict()})
     except Exception:

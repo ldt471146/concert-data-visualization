@@ -18,7 +18,8 @@
 - 演唱会列表、评论文本、城市、票价和情绪统计
 - jieba / SnowNLP 可选接入，缺少依赖时使用项目内置的轻量回退逻辑
 - 城市、状态、时间和价格筛选
-- 城市地图、月度趋势、演唱会日历、票价分析、评论主题和艺人对比接口
+- 城市地图、月度趋势、演唱会日历、票价分析、评论主题、艺人热度榜、数据来源、城市票价对比和互动热度榜（九项分析）接口
+- **Redis 缓存层**：10 个分析/推荐接口 TTL 缓存（分析 300 秒、概览与推荐 120 秒），命中后 64-102 毫秒返回，Redis 不可用时自动降级
 - 基于城市、票价、售票状态、评论数和点赞数的规则推荐
 - 浏览器本地收藏、两到三场演唱会对比、偏好设置和页面提醒
 - 本地 Lucide 图标与 ECharts 图表，页面文案使用直白中文
@@ -31,6 +32,8 @@
 C:/Users/Administrator/AppData/Local/Programs/Python/Python314/python.exe -m pip install -r requirements.txt
 C:/Users/Administrator/AppData/Local/Programs/Python/Python314/python.exe run.py
 ```
+
+> 性能优化依赖本机 Redis（默认 127.0.0.1:6379）：先 `redis-server` 启动 Redis，再运行系统。Redis 未启动时系统自动降级为无缓存模式，不影响功能。
 
 打开 <http://127.0.0.1:5000> 查看数据看板。
 
@@ -88,7 +91,7 @@ C:/Users/Administrator/AppData/Local/Programs/Python/Python314/python.exe script
 C:/Users/Administrator/AppData/Local/Programs/Python/Python314/python.exe -m pytest -q
 ```
 
-当前测试覆盖健康检查、数据概览、城市筛选、六类扩展分析接口、管理员登录、CSV 预览、ORM 数据导入、任务详情、数据导出、场次编辑、分析任务、退出登录、本地公开快照规模检查和新数据库自动加载；最近一次结果为 `10 passed`。
+当前测试覆盖健康检查、数据概览、城市筛选、六类扩展分析接口、管理员登录、CSV 预览、ORM 数据导入、任务详情、数据导出、场次编辑、分析任务、退出登录、本地公开快照规模检查和新数据库自动加载；最近一次结果为 `12 passed`，含十万级数据规模断言（演唱会记录 + 评论记录合计 ≥ 10 万）。
 
 ## Trellis
 

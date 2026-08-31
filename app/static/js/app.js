@@ -240,10 +240,26 @@ const calendarState = { year: new Date().getFullYear(), month: new Date().getMon
         chart.setOption(optionForBars(items.map((item) => item.topic), items.map((item) => item.comments), chartTheme.cyan, true), true);
     };
     const renderArtists = (payload = {}) => {
-        const items = (payload.items || []).slice().sort((a, b) => b.concerts - a.concerts).slice(0, 8);
+        const items = (payload.items || []).filter((item) => item.heat > 0).slice(0, 10);
         const chart = getChart('artists-chart');
         if (!chart || !items.length) return renderEmptyChart('artists-chart');
-        chart.setOption({ animationDuration: 600, grid: { left: 12, right: 24, top: 8, bottom: 12, containLabel: true }, tooltip: { ...chartTooltip, trigger: 'axis', axisPointer: { type: 'shadow' }, formatter: (params) => `${escapeHTML(params[0]?.name || '')}<br/>${params[0]?.value || 0} 场` }, xAxis: { type: 'value', splitLine: { lineStyle: { color: chartTheme.line } }, axisLabel: chartText, axisLine: { show: false } }, yAxis: { type: 'category', data: items.map((item) => item.artist).reverse(), axisLabel: { color: chartTheme.ink, fontFamily: 'Fira Sans', fontSize: 10 }, axisTick: { show: false }, axisLine: { show: false } }, series: [{ type: 'bar', data: items.map((item) => item.concerts).reverse(), barWidth: 10, itemStyle: { color: chartTheme.lime }, label: { show: true, position: 'right', color: chartTheme.lime, fontFamily: 'Fira Code', fontSize: 10 } }] }, true);
+        const labels = items.map((item) => (item.artist.length > 8 ? `${item.artist.slice(0, 8)}…` : item.artist)).reverse();
+        const values = items.map((item) => item.heat).reverse();
+        const counts = items.map((item) => `${item.concerts} 场 / ${formatNumber(item.comments)} 评`).reverse();
+        chart.setOption({ animationDuration: 600, grid: { left: 12, right: 30, top: 8, bottom: 12, containLabel: true }, tooltip: { ...chartTooltip, trigger: 'axis', axisPointer: { type: 'shadow' }, formatter: (params) => `${escapeHTML(params[0]?.name || '')}<br/>热度 ${params[0]?.value || 0}<br/>${counts[params[0]?.dataIndex] || ''}` }, xAxis: { type: 'value', splitLine: { lineStyle: { color: chartTheme.line } }, axisLabel: chartText, axisLine: { show: false } }, yAxis: { type: 'category', data: labels, axisLabel: { color: chartTheme.ink, fontFamily: 'Fira Sans', fontSize: 10 }, axisTick: { show: false }, axisLine: { show: false } }, series: [{ type: 'bar', data: values, barWidth: 10, itemStyle: { color: chartTheme.lime }, label: { show: true, position: 'right', color: chartTheme.lime, fontFamily: 'Fira Code', fontSize: 10 } }] }, true);
+    };
+    const renderCityPrices = (payload = {}) => {
+        const items = (payload.cities || []).slice().sort((a, b) => (b.average_min_price || 0) - (a.average_min_price || 0)).slice(0, 12);
+        const chart = getChart('city-price-chart');
+        if (!chart || !items.length) return renderEmptyChart('city-price-chart');
+        chart.setOption({ animationDuration: 600, grid: { left: 12, right: 36, top: 8, bottom: 12, containLabel: true }, tooltip: { ...chartTooltip, trigger: 'axis', axisPointer: { type: 'shadow' }, formatter: (params) => `${escapeHTML(params[0]?.name || '')}<br/>均价 ¥${params[0]?.value || 0}` }, xAxis: { type: 'value', splitLine: { lineStyle: { color: chartTheme.line } }, axisLabel: chartText, axisLine: { show: false } }, yAxis: { type: 'category', data: items.map((item) => item.city).reverse(), axisLabel: { color: chartTheme.ink, fontFamily: 'Fira Sans', fontSize: 10 }, axisTick: { show: false }, axisLine: { show: false } }, series: [{ type: 'bar', data: items.map((item) => item.average_min_price || 0).reverse(), barWidth: 10, itemStyle: { color: chartTheme.coral }, label: { show: true, position: 'right', color: chartTheme.coral, fontFamily: 'Fira Code', fontSize: 10, formatter: (p) => `¥${p.value}` } }] }, true);
+    };
+    const renderEngagement = (payload = {}) => {
+        const items = payload.items || [];
+        const chart = getChart('engagement-chart');
+        if (!chart || !items.length) return renderEmptyChart('engagement-chart');
+        const data = items.map((item) => ({ name: item.concert_name || `场次 ${item.concert_id}`, value: item.likes || 0, comments: item.comments || 0, city: item.city || '' }));
+        chart.setOption({ animationDuration: 600, color: [chartTheme.cyan], tooltip: { ...chartTooltip, trigger: 'item', formatter: (params) => `${escapeHTML(params.name)}<br/>点赞 ${formatNumber(params.value)}<br/>评论 ${params.data.comments} 条` }, xAxis: { type: 'category', data: data.map((item) => (item.name.length > 10 ? `${item.name.slice(0, 10)}…` : item.name)).reverse(), axisLabel: { ...chartText, rotate: 30, fontSize: 9 }, axisLine: { lineStyle: { color: chartTheme.line } } }, yAxis: { type: 'value', splitLine: { lineStyle: { color: chartTheme.line } }, axisLabel: chartText, axisLine: { show: false } }, series: [{ type: 'bar', data: data.map((item) => item.value).reverse(), barWidth: 12, itemStyle: { color: chartTheme.cyan, borderRadius: [3, 3, 0, 0] }, label: { show: true, position: 'top', color: chartTheme.cyan, fontFamily: 'Fira Code', fontSize: 9, formatter: (p) => formatNumber(p.value) } }] }, true);
     };
     const renderSources = (payload = {}) => {
         const target = document.getElementById('sources-list');
@@ -259,6 +275,8 @@ const calendarState = { year: new Date().getFullYear(), month: new Date().getMon
         renderTopics(payloads[4]);
         renderArtists(payloads[5]);
         renderSources(payloads[6]);
+        renderCityPrices(payloads[3]);
+        renderEngagement(payloads[7]);
     };
 
     const renderFilters = (meta, current) => {
@@ -366,7 +384,7 @@ const calendarState = { year: new Date().getFullYear(), month: new Date().getMon
     const loadDashboard = async (query = '') => {
         const stage = document.querySelector('.main-stage');
         stage?.classList.add('is-loading');
-        const names = ['map', 'trend', 'calendar', 'prices', 'topics', 'artists', 'sources'];
+        const names = ['map', 'trend', 'calendar', 'prices', 'topics', 'artists', 'sources', 'engagement'];
         try {
             const overviewPromise = fetchJSON(`/api/overview${query ? `?${query}` : ''}`);
             const analyticsPromise = Promise.all(names.map((name) => fetchJSON(`/api/analytics/${name}${query ? `?${query}` : ''}`).catch((error) => ({ error }))));

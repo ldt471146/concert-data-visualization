@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 from flask import Blueprint, jsonify, render_template, request
 
 from .analysis import sentiment_score, tokenize
+from .cache import cache_key, clear_cache, get_cached, set_cached
 from .analytics import (
     artist_data,
     calendar_data,
@@ -78,7 +79,7 @@ def filter_concerts(filters):
 def _filtered_payload(filters):
     concerts = filter_concerts(filters)
     ids = {concert.id for concert in concerts}
-    comments = [comment for comment in CommentInfo.query.order_by(CommentInfo.comment_time.asc()).all() if comment.concert_id in ids]
+    comments = _load_comments_for_ids(ids)
 
     cities = Counter(concert.city for concert in concerts)
     price_bins = Counter()
@@ -98,8 +99,14 @@ def _filtered_payload(filters):
         sentiment["正面" if score >= 0.6 else "负面" if score <= 0.4 else "中性"] += 1
         keywords.update(tokenize(comment.comment_text))
 
-    last_updated_values = [concert.collected_at for concert in concerts] + [comment.collected_at for comment in comments]
-    last_updated = max(last_updated_values).strftime("%Y.%m.%d") if last_updated_values else "暂无"
+    last_dt = None
+    for concert in concerts:
+        if concert.collected_at and (last_dt is None or concert.collected_at > last_dt):
+            last_dt = concert.collected_at
+    for comment in comments:
+        if comment.collected_at and (last_dt is None or comment.collected_at > last_dt):
+            last_dt = comment.collected_at
+    last_updated = last_dt.strftime("%Y.%m.%d") if last_dt else "暂无"
     average_sentiment = round(total_sentiment / len(comments) * 100) if comments else 0
     return {
         "metrics": {
@@ -128,11 +135,8 @@ def dashboard():
     return render_template("dashboard.html")
 
 
-@main.get("/api/overview")
-def overview():
-    filters = request_filters()
-    payload = _filtered_payload(filters)
-    payload["meta"] = {
+def _overview_meta(filters):
+    return {
         "artists": [item[0] for item in ConcertInfo.query.with_entities(ConcertInfo.artist_name).distinct().order_by(ConcertInfo.artist_name).all()],
         "cities": [item[0] for item in ConcertInfo.query.with_entities(ConcertInfo.city).distinct().order_by(ConcertInfo.city).all()],
         "statuses": [item[0] for item in ConcertInfo.query.with_entities(ConcertInfo.sale_status).distinct().order_by(ConcertInfo.sale_status).all()],
@@ -143,12 +147,35 @@ def overview():
             "status": filters["status"],
         },
     }
+
+
+@main.get("/api/overview")
+def overview():
+    from flask import current_app
+    filters = request_filters()
+    key = cache_key("overview", **filters)
+    cached = None if current_app.testing else get_cached(key)
+    if cached is not None:
+        cached["meta"] = _overview_meta(filters)
+        cached["cached"] = True
+        return jsonify(cached)
+    payload = _filtered_payload(filters)
+    payload["meta"] = _overview_meta(filters)
+    set_cached(key, payload, ttl=120)
     return jsonify(payload)
 
 
 @main.get("/api/recommendations")
 def recommendations():
-    return jsonify({"items": build_recommendations(request_filters(), limit=8)})
+    from flask import current_app
+    filters = request_filters()
+    key = cache_key("recommendations", limit=8, **filters)
+    cached = None if current_app.testing else get_cached(key)
+    if cached is not None:
+        return jsonify(cached)
+    payload = {"items": build_recommendations(filters, limit=8)}
+    set_cached(key, payload, ttl=120)
+    return jsonify(payload)
 
 
 @main.get("/api/health")
@@ -183,15 +210,30 @@ def _filter_warnings():
     return warnings
 
 
+def _load_comments_for_ids(concert_ids, max_sample=3000):
+    """按场次 ID 加载评论, 超过 max_sample 时均匀采样, 避免十万级全量遍历拖垮渲染。"""
+    if not concert_ids:
+        return []
+    ids = list(concert_ids)
+    base = CommentInfo.query.filter(CommentInfo.concert_id.in_(ids))
+    total = base.count()
+    if total <= max_sample:
+        return base.order_by(CommentInfo.comment_time.asc()).all()
+    # 一次性取出 id 列表后均匀抽样, 避免逐条 offset 查询
+    all_rows = base.with_entities(CommentInfo.id).all()
+    all_ids = [row[0] for row in all_rows]
+    step = max(1, len(all_ids) // max_sample)
+    chosen = all_ids[::step][:max_sample]
+    if chosen:
+        return CommentInfo.query.filter(CommentInfo.id.in_(chosen)).all()
+    return []
+
+
 def _analytics_context():
     filters = request_filters()
     concerts = filter_concerts(filters)
     concert_ids = {concert.id for concert in concerts}
-    comments = [
-        comment
-        for comment in CommentInfo.query.order_by(CommentInfo.comment_time.asc()).all()
-        if comment.concert_id in concert_ids
-    ]
+    comments = _load_comments_for_ids(concert_ids)
     details = []
     if concert_ids:
         details = TicketPriceDetail.query.filter(TicketPriceDetail.concert_id.in_(concert_ids)).all()
@@ -205,43 +247,61 @@ def _analytics_response(payload):
     return jsonify(payload)
 
 
+def _cacheable(endpoint, data_func, ttl=300, scope=""):
+    """通用缓存包装：按筛选参数缓存聚合结果。endpoint 用于区分类型, scope 附加到 key。"""
+    from flask import current_app
+    filters = request_filters()
+    key = cache_key(endpoint, _scope=scope, **filters)
+    cached = None if current_app.testing else get_cached(key)
+    if cached is not None:
+        cached["cached"] = True
+        return _analytics_response(cached)
+    _, concerts, comments, details = _analytics_context()
+    data = data_func(concerts, comments, details)
+    set_cached(key, data, ttl=ttl)
+    return _analytics_response(data)
+
+
 @main.get("/api/analytics/map")
 def analytics_map():
-    _, concerts, _, _ = _analytics_context()
-    return _analytics_response(map_data(concerts))
+    return _cacheable("map", lambda c, m, d: map_data(c))
 
 
 @main.get("/api/analytics/trend")
 def analytics_trend():
-    _, concerts, comments, _ = _analytics_context()
-    return _analytics_response(trend_data(concerts, comments))
+    return _cacheable("trend", lambda c, m, d: trend_data(c, m))
 
 
 @main.get("/api/analytics/calendar")
 def analytics_calendar():
-    _, concerts, comments, _ = _analytics_context()
-    return _analytics_response(calendar_data(concerts, comments))
+    return _cacheable("calendar", lambda c, m, d: calendar_data(c, m))
 
 
 @main.get("/api/analytics/prices")
 def analytics_prices():
-    _, concerts, comments, details = _analytics_context()
-    return _analytics_response(price_data(concerts, comments, details))
+    return _cacheable("prices", lambda c, m, d: price_data(c, m, d))
 
 
 @main.get("/api/analytics/topics")
 def analytics_topics():
-    _, _, comments, _ = _analytics_context()
-    return _analytics_response(topic_data(comments))
+    return _cacheable("topics", lambda c, m, d: topic_data(m))
 
 
 @main.get("/api/analytics/artists")
 def analytics_artists():
-    _, concerts, comments, _ = _analytics_context()
-    return _analytics_response(artist_data(concerts, comments))
+    return _cacheable("artists", lambda c, m, d: artist_data(c, m, limit=10), scope="top10")
+
+
+@main.get("/api/analytics/engagement")
+def analytics_engagement():
+    """互动榜：按评论数/点赞数排序的场次 Top, 数据复用票价分析的 engagement。"""
+    def build(c, m, d):
+        data = price_data(c, m, d)
+        items = data.get("engagement", [])[:10]
+        return {"items": items, "note": data.get("note", "")}
+    return _cacheable("engagement", build)
 
 
 @main.get("/api/analytics/sources")
 def analytics_sources():
-    _, concerts, _, _ = _analytics_context()
-    return _analytics_response(sources_data(concerts))
+    return _cacheable("sources", lambda c, m, d: sources_data(c))

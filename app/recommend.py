@@ -34,7 +34,11 @@ def build_recommendations(filters=None, limit=4):
         query = query.filter(ConcertInfo.show_time <= end)
 
     recommendations = []
-    for concert in query.order_by(ConcertInfo.show_time.asc()).all():
+    # 使用 selectin 批量加载 comments, 避免逐场触发 N+1 查询
+    concerts_batch = query.options(
+        __import__("sqlalchemy.orm", fromlist=["selectinload"]).selectinload(ConcertInfo.comments)
+    ).order_by(ConcertInfo.show_time.asc()).all()
+    for concert in concerts_batch:
         if not price_matches(concert, min_price, max_price):
             continue
         comments = concert.comments
