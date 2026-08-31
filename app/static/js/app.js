@@ -480,6 +480,116 @@ const calendarState = { year: new Date().getFullYear(), month: new Date().getMon
         body.innerHTML = items.length ? items.map((job) => `<tr><td><span class="job-name">${escapeHTML(job.job_type)}</span></td><td><span class="job-status status-${escapeHTML(job.status)}">${label[job.status] || escapeHTML(job.status)}</span></td><td>${formatNumber(job.input_count)}</td><td>${formatNumber(job.success_count)}</td><td>${formatNumber(job.failed_count)}</td><td class="mono">${escapeHTML((job.started_at || '').slice(0, 16).replace('T', ' '))}</td><td>${escapeHTML(job.message)}</td><td><button class="table-action" type="button" data-job-detail="${Number(job.id)}">查看详情</button></td></tr>`).join('') : '<tr><td colspan="8" class="table-empty">暂无运行记录</td></tr>';
     };
 
+    const adminState = { concertPage: 1, commentPage: 1 };
+
+    const renderAdminStats = (payload) => {
+        const totals = payload.totals || {};
+        [['stat-concerts', totals.concerts], ['stat-comments', totals.comments], ['stat-artists', totals.artists], ['stat-cities', totals.cities]].forEach(([id, value]) => {
+            const node = document.getElementById(id);
+            if (node) node.textContent = formatNumber(value ?? 0);
+        });
+        const daysChart = getChart('admin-days-chart');
+        const days = payload.recent_days || [];
+        if (daysChart && days.length) {
+            daysChart.setOption({ animationDuration: 500, grid: { left: 12, right: 16, top: 12, bottom: 12, containLabel: true }, tooltip: { ...chartTooltip, trigger: 'axis' }, xAxis: { type: 'category', data: days.map((item) => (item.date || '').slice(5)), axisLabel: chartText, axisLine: { lineStyle: { color: chartTheme.line } } }, yAxis: { type: 'value', splitLine: { lineStyle: { color: chartTheme.line } }, axisLabel: chartText }, series: [{ type: 'line', smooth: true, data: days.map((item) => item.count), symbolSize: 6, lineStyle: { color: chartTheme.lime, width: 2 }, itemStyle: { color: chartTheme.lime }, areaStyle: { color: 'rgba(220,255,88,.08)' } }] }, true);
+        } else if (daysChart) {
+            renderEmptyChart('admin-days-chart');
+        }
+        const sourcesChart = getChart('admin-sources-chart');
+        const sources = payload.sources || [];
+        if (sourcesChart && sources.length) {
+            sourcesChart.setOption({ animationDuration: 500, color: ['#dcff58', '#5ed5c9', '#ff835c', '#8a98a3', '#b28dff'], tooltip: { ...chartTooltip, trigger: 'item', formatter: (params) => `${escapeHTML(params.name)}<br/>${formatNumber(params.value)} 场` }, legend: { bottom: 0, textStyle: { color: chartTheme.text, fontFamily: 'Fira Sans', fontSize: 10 }, itemWidth: 10, itemHeight: 10 }, series: [{ type: 'pie', radius: ['42%', '68%'], center: ['50%', '44%'], data: sources.map((item) => ({ name: item.source, value: item.count })), label: { color: chartTheme.text, fontFamily: 'Fira Sans', fontSize: 10 }, itemStyle: { borderColor: chartTheme.panel, borderWidth: 2 } }] }, true);
+        } else if (sourcesChart) {
+            renderEmptyChart('admin-sources-chart');
+        }
+    };
+
+    const renderAdminConcerts = (payload) => {
+        const body = document.getElementById('concert-admin-body');
+        if (!body) return;
+        const items = payload.items || [];
+        const totalNode = document.getElementById('concert-total');
+        if (totalNode) totalNode.textContent = `共 ${formatNumber(payload.total ?? 0)} 场 · 第 ${payload.page} / ${payload.pages} 页`;
+        body.innerHTML = items.length ? items.map((concert) => `<tr>
+            <td><input type="checkbox" class="concert-check" data-concert-id="${Number(concert.id)}" aria-label="选择场次 ${Number(concert.id)}"></td>
+            <td class="mono">${Number(concert.id)}</td>
+            <td>${escapeHTML(concert.artist_name)}</td>
+            <td title="${escapeHTML(concert.concert_name)}">${escapeHTML((concert.concert_name || '').slice(0, 26))}${(concert.concert_name || '').length > 26 ? '…' : ''}</td>
+            <td>${escapeHTML(concert.city)}</td>
+            <td class="mono">${escapeHTML((concert.show_time || '').slice(0, 16).replace('T', ' '))}</td>
+            <td class="mono">${escapeHTML(concert.price_text || '—')}</td>
+            <td><span class="job-status status-${concert.sale_status === '售票中' ? 'success' : concert.sale_status === '已售罄' ? 'failed' : 'running'}">${escapeHTML(concert.sale_status)}</span></td>
+            <td class="mono">${escapeHTML((concert.source_type || '').slice(0, 12))}</td>
+            <td class="row-actions"><button class="table-action" type="button" data-edit-concert="${Number(concert.id)}">编辑</button><button class="table-action danger" type="button" data-delete-concert="${Number(concert.id)}">删除</button></td>
+        </tr>`).join('') : '<tr><td colspan="10" class="table-empty">没有匹配的演唱会记录</td></tr>';
+        const pager = document.getElementById('concert-pager');
+        if (pager) pager.innerHTML = buildPager(payload.page, payload.pages, 'concert');
+        updateBatchButton();
+    };
+
+    const renderAdminComments = (payload) => {
+        const body = document.getElementById('comment-admin-body');
+        if (!body) return;
+        const items = payload.items || [];
+        const totalNode = document.getElementById('comment-total');
+        if (totalNode) totalNode.textContent = `共 ${formatNumber(payload.total ?? 0)} 条 · 第 ${payload.page} / ${payload.pages} 页`;
+        body.innerHTML = items.length ? items.map((comment) => {
+            const score = comment.sentiment_score;
+            const sentimentLabel = score == null ? '未分析' : score >= 0.6 ? '正面' : score <= 0.4 ? '负面' : '中性';
+            const sentimentClass = score == null ? 'running' : score >= 0.6 ? 'success' : score <= 0.4 ? 'failed' : 'running';
+            return `<tr>
+            <td class="mono">${Number(comment.id)}</td>
+            <td class="mono">${comment.concert_id == null ? '—' : Number(comment.concert_id)}</td>
+            <td title="${escapeHTML(comment.comment_text)}">${escapeHTML((comment.comment_text || '').slice(0, 48))}${(comment.comment_text || '').length > 48 ? '…' : ''}</td>
+            <td class="mono">${escapeHTML((comment.comment_time || '').slice(0, 16).replace('T', ' '))}</td>
+            <td class="mono">${formatNumber(comment.like_count ?? 0)}</td>
+            <td>${escapeHTML(comment.user_region || '—')}</td>
+            <td><span class="job-status status-${sentimentClass}">${sentimentLabel}</span></td>
+            <td class="row-actions"><button class="table-action danger" type="button" data-delete-comment="${Number(comment.id)}">删除</button></td>
+        </tr>`; }).join('') : '<tr><td colspan="8" class="table-empty">没有匹配的评论记录</td></tr>';
+        const pager = document.getElementById('comment-pager');
+        if (pager) pager.innerHTML = buildPager(payload.page, payload.pages, 'comment');
+    };
+
+    const buildPager = (page, pages, kind) => {
+        const prev = `<button class="pager-btn" type="button" data-page-${kind}="${Math.max(1, page - 1)}" ${page <= 1 ? 'disabled' : ''}>上一页</button>`;
+        const next = `<button class="pager-btn" type="button" data-page-${kind}="${Math.min(pages, page + 1)}" ${page >= pages ? 'disabled' : ''}>下一页</button>`;
+        const dots = [];
+        for (let i = 1; i <= pages && i <= 7; i += 1) {
+            dots.push(`<button class="pager-btn ${i === page ? 'is-active' : ''}" type="button" data-page-${kind}="${i}">${i}</button>`);
+        }
+        return `${prev}${dots.join('')}${next}`;
+    };
+
+    const concertQuery = () => {
+        const params = new URLSearchParams();
+        const q = document.getElementById('concert-q')?.value?.trim();
+        const artist = document.getElementById('concert-artist-filter')?.value;
+        const city = document.getElementById('concert-city-filter')?.value;
+        const status = document.getElementById('concert-status-filter')?.value;
+        if (q) params.set('q', q);
+        if (artist) params.set('artist', artist);
+        if (city) params.set('city', city);
+        if (status) params.set('status', status);
+        params.set('page', adminState.concertPage);
+        return params.toString();
+    };
+    const commentQuery = () => {
+        const params = new URLSearchParams();
+        const q = document.getElementById('comment-q')?.value?.trim();
+        const artist = document.getElementById('comment-artist-filter')?.value;
+        if (q) params.set('q', q);
+        if (artist) params.set('artist', artist);
+        params.set('page', adminState.commentPage);
+        return params.toString();
+    };
+
+    const updateBatchButton = () => {
+        const checked = document.querySelectorAll('.concert-check:checked').length;
+        const button = document.querySelector('[data-concert-batch-delete]');
+        if (button) button.disabled = checked === 0;
+    };
+
     const initAdmin = () => {
         const refreshJobs = async () => {
             try { renderJobs((await fetchJSON('/admin/api/jobs')).items || []); } catch (error) { toast(error.message, 'error'); }
@@ -490,6 +600,55 @@ const calendarState = { year: new Date().getFullYear(), month: new Date().getMon
             if (!file) return toast('请先选择 CSV 文件', 'error');
             try { renderImportReport((await fetchJSON('/admin/api/import/preview', { method: 'POST', body: new FormData(form) })).report); } catch (error) { toast(error.message, 'error'); }
         };
+        const loadConcerts = async (page = 1) => {
+            adminState.concertPage = page;
+            try {
+                const payload = await fetchJSON(`/admin/api/concerts?${concertQuery()}`);
+                renderAdminConcerts(payload);
+            } catch (error) { toast(error.message, 'error'); }
+        };
+        const loadComments = async (page = 1) => {
+            adminState.commentPage = page;
+            try {
+                const payload = await fetchJSON(`/admin/api/comments?${commentQuery()}`);
+                renderAdminComments(payload);
+            } catch (error) { toast(error.message, 'error'); }
+        };
+        const loadSummary = async () => {
+            try {
+                const summary = await fetchJSON('/admin/api/concerts/summary');
+                [['concert-artist-filter', summary.artists], ['concert-city-filter', summary.cities], ['concert-status-filter', summary.statuses]].forEach(([id, values]) => {
+                    const select = document.getElementById(id);
+                    if (!select) return;
+                    const current = select.value;
+                    select.innerHTML = `<option value="">${id.includes('artist') ? '全部艺人' : id.includes('city') ? '全部城市' : '全部状态'}</option>` + (values || []).map((value) => `<option value="${escapeHTML(value)}">${escapeHTML(value)}</option>`).join('');
+                    if (current) select.value = current;
+                });
+                const commentArtist = document.getElementById('comment-artist-filter');
+                if (commentArtist) {
+                    commentArtist.innerHTML = '<option value="">全部艺人</option>' + (summary.artists || []).map((value) => `<option value="${escapeHTML(value)}">${escapeHTML(value)}</option>`).join('');
+                }
+            } catch (error) { toast(error.message, 'error'); }
+        };
+        const loadStats = async () => {
+            try { renderAdminStats(await fetchJSON('/admin/api/stats')); } catch (error) { toast(error.message, 'error'); }
+        };
+
+        document.querySelectorAll('[data-admin-tab]').forEach((tab) => {
+            tab.addEventListener('click', () => {
+                document.querySelectorAll('[data-admin-tab]').forEach((node) => node.classList.remove('is-active'));
+                document.querySelectorAll('[data-admin-pane]').forEach((node) => node.classList.remove('is-active'));
+                tab.classList.add('is-active');
+                const name = tab.dataset.adminTab;
+                const pane = document.querySelector(`[data-admin-pane="${name}"]`);
+                pane?.classList.add('is-active');
+                if (name === 'dashboard') loadStats();
+                if (name === 'concerts') { loadSummary(); loadConcerts(1); }
+                if (name === 'comments') { loadSummary(); loadComments(1); }
+                refreshIcons();
+            });
+        });
+
         document.querySelector('[data-refresh-jobs]')?.addEventListener('click', refreshJobs);
         document.querySelector('[data-preview-import]')?.addEventListener('click', previewImport);
         document.querySelector('#import-form input[type="file"]')?.addEventListener('change', (event) => {
@@ -509,10 +668,91 @@ const calendarState = { year: new Date().getFullYear(), month: new Date().getMon
         document.getElementById('job-detail')?.addEventListener('click', (event) => {
             if (event.target.closest('[data-close-job-detail]')) event.currentTarget.hidden = true;
         });
+
+        document.querySelector('[data-concert-search]')?.addEventListener('click', () => loadConcerts(1));
+        document.querySelector('[data-concert-reset]')?.addEventListener('click', () => {
+            ['concert-q', 'concert-artist-filter', 'concert-city-filter', 'concert-status-filter'].forEach((id) => {
+                const node = document.getElementById(id);
+                if (node) node.value = '';
+            });
+            loadConcerts(1);
+        });
+        document.getElementById('concert-admin-body')?.addEventListener('click', async (event) => {
+            if (event.target.closest('[data-delete-concert]')) {
+                const id = Number(event.target.closest('[data-delete-concert]').dataset.deleteConcert);
+                if (!confirm(`确认删除演唱会记录 #${id}？关联评论将一并删除。`)) return;
+                try {
+                    await fetchJSON(`/admin/api/concerts/${id}`, { method: 'DELETE' });
+                    toast('场次已删除');
+                    loadConcerts(adminState.concertPage);
+                } catch (error) { toast(error.message, 'error'); }
+            }
+            if (event.target.closest('[data-edit-concert]')) {
+                const id = Number(event.target.closest('[data-edit-concert]').dataset.editConcert);
+                const newName = prompt('修改演唱会名称（留空取消）：');
+                if (newName == null) return;
+                const name = String(newName).trim();
+                if (!name) return;
+                try {
+                    await fetchJSON(`/admin/api/concerts/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ concert_name: name }) });
+                    toast('场次名称已更新');
+                    loadConcerts(adminState.concertPage);
+                } catch (error) { toast(error.message, 'error'); }
+            }
+            if (event.target.closest('.concert-check')) updateBatchButton();
+        });
+        document.querySelector('[data-check-all-concerts]')?.addEventListener('change', (event) => {
+            document.querySelectorAll('.concert-check').forEach((node) => { node.checked = event.target.checked; });
+            updateBatchButton();
+        });
+        document.querySelector('[data-concert-batch-delete]')?.addEventListener('click', async () => {
+            const ids = [...document.querySelectorAll('.concert-check:checked')].map((node) => Number(node.dataset.concertId));
+            if (!ids.length) return;
+            if (!confirm(`确认批量删除 ${ids.length} 场演唱会？关联评论将一并删除。`)) return;
+            try {
+                const result = await fetchJSON('/admin/api/concerts/batch-delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids }) });
+                toast(`已删除 ${result.deleted} 场`);
+                loadConcerts(1);
+            } catch (error) { toast(error.message, 'error'); }
+        });
+        document.getElementById('concert-pager')?.addEventListener('click', (event) => {
+            const button = event.target.closest('[data-page-concert]');
+            if (button) loadConcerts(Number(button.dataset.pageConcert));
+        });
+
+        document.querySelector('[data-comment-search]')?.addEventListener('click', () => loadComments(1));
+        document.querySelector('[data-comment-reset]')?.addEventListener('click', () => {
+            ['comment-q', 'comment-artist-filter'].forEach((id) => {
+                const node = document.getElementById(id);
+                if (node) node.value = '';
+            });
+            loadComments(1);
+        });
+        document.getElementById('comment-admin-body')?.addEventListener('click', async (event) => {
+            if (event.target.closest('[data-delete-comment]')) {
+                const id = Number(event.target.closest('[data-delete-comment]').dataset.deleteComment);
+                if (!confirm(`确认删除评论 #${id}？`)) return;
+                try {
+                    await fetchJSON(`/admin/api/comments/${id}`, { method: 'DELETE' });
+                    toast('评论已删除');
+                    loadComments(adminState.commentPage);
+                } catch (error) { toast(error.message, 'error'); }
+            }
+        });
+        document.getElementById('comment-pager')?.addEventListener('click', (event) => {
+            const button = event.target.closest('[data-page-comment]');
+            if (button) loadComments(Number(button.dataset.pageComment));
+        });
+
         document.querySelector('[data-run-analysis]')?.addEventListener('click', async (event) => {
             const button = event.currentTarget;
             button.disabled = true;
-            try { await fetchJSON('/admin/api/analyze', { method: 'POST' }); toast('分析任务已完成'); await refreshJobs(); } catch (error) { toast(error.message, 'error'); } finally { button.disabled = false; }
+            try { await fetchJSON('/admin/api/analyze', { method: 'POST' }); toast('分析任务已完成'); await refreshJobs(); await loadStats(); } catch (error) { toast(error.message, 'error'); } finally { button.disabled = false; }
+        });
+        document.querySelector('[data-clear-cache]')?.addEventListener('click', async (event) => {
+            const button = event.currentTarget;
+            button.disabled = true;
+            try { const result = await fetchJSON('/admin/api/cache/clear', { method: 'POST' }); toast(`已清空 ${result.cleared} 个缓存键`); } catch (error) { toast(error.message, 'error'); } finally { button.disabled = false; }
         });
         document.querySelector('[data-seed]')?.addEventListener('click', async (event) => {
             const button = event.currentTarget;
@@ -534,26 +774,8 @@ const calendarState = { year: new Date().getFullYear(), month: new Date().getMon
                 if (label) label.textContent = '选择 CSV 文件';
             } catch (error) { toast(error.message, 'error'); } finally { button.disabled = false; }
         });
-        document.getElementById('edit-concert-form')?.addEventListener('submit', async (event) => {
-            event.preventDefault();
-            const form = event.currentTarget;
-            const id = document.getElementById('edit-concert-id').value;
-            const payload = {};
-            [['edit-concert-name', 'name'], ['edit-concert-venue', 'venue'], ['edit-concert-time', 'time'], ['edit-concert-price', 'price_text'], ['edit-concert-status', 'sale_status']].forEach(([field, key]) => {
-                const value = document.getElementById(field)?.value;
-                if (value) payload[key] = value;
-            });
-            const result = document.getElementById('edit-result');
-            try {
-                const response = await fetchJSON(`/admin/api/concerts/${Number(id)}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-                if (result) { result.className = 'edit-result is-success'; result.textContent = `记录 #${response.concert.id} 已更新`; }
-                toast('场次记录已更新');
-                await refreshJobs();
-            } catch (error) {
-                if (result) { result.className = 'edit-result is-error'; result.textContent = error.message; }
-                toast(error.message, 'error');
-            }
-        });
+
+        loadStats();
         refreshJobs();
     };
 

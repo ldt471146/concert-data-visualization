@@ -181,3 +181,35 @@ def test_bulk_100k_data_files_reach_target():
     # 来源标注: 记录都带 source_type 与来源地址
     for r in concert_rows[:200]:
         assert r["source_type"] and r["source_url"]
+
+
+
+def test_admin_concert_and_comment_pagination(client):
+    login(client)
+    concerts = client.get("/admin/api/concerts?page=1&size=5")
+    assert concerts.status_code == 200
+    assert concerts.json["items"]
+    assert concerts.json["total"] > 0
+    assert concerts.json["pages"] >= 1
+    comments = client.get("/admin/api/comments?page=1&size=5")
+    assert comments.status_code == 200
+    assert comments.json["total"] > 0
+
+
+def test_admin_stats_and_summary(client):
+    login(client)
+    stats = client.get("/admin/api/stats")
+    assert stats.status_code == 200
+    assert stats.json["totals"]["concerts"] > 0
+    assert stats.json["totals"]["comments"] > 0
+    summary = client.get("/admin/api/concerts/summary")
+    assert summary.status_code == 200
+    assert summary.json["artists"]
+    assert summary.json["cities"]
+
+
+def test_admin_export_comments(client):
+    login(client)
+    response = client.get("/admin/api/export/comments")
+    assert response.status_code == 200
+    assert response.data[:6] == b"id,con"

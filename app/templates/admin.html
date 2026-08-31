@@ -9,28 +9,101 @@
         <div class="admin-context"><span class="signal-pip"></span><span>管理后台</span><span class="meta-divider"></span><span>管理员 / {{ admin_name }}</span></div>
         <div class="top-actions"><a class="text-button" href="{{ url_for('main.dashboard') }}"><i data-lucide="layout-dashboard"></i><span>返回看板</span></a><a class="icon-button" href="{{ url_for('auth.logout') }}" aria-label="退出登录"><i data-lucide="log-out"></i></a></div>
     </header>
+
     <main class="admin-main">
-        <section class="admin-hero" data-reveal><div><span class="eyebrow"><span class="eyebrow-line"></span>数据管理</span><h1>管理后台</h1></div><div class="admin-status"><span class="status-tag"><i data-lucide="shield-check"></i>已登录</span><p>管理 CSV 数据、分析任务、导出和场次记录。</p></div></section>
-
-        <section class="admin-actions-grid" data-reveal>
-            <article class="admin-action-card import-card"><div class="action-icon"><i data-lucide="upload"></i></div><div><span class="panel-kicker">CSV / 导入</span><h3>导入数据</h3><p>选择演唱会或评论 CSV，可先预览校验报告。</p></div><form id="import-form" class="import-form"><select name="kind" aria-label="数据类型"><option value="concerts">演唱会信息</option><option value="comments">评论信息</option></select><label class="file-input"><input type="file" name="file" accept=".csv,text/csv" required><span><i data-lucide="file-up"></i><span data-file-name>选择 CSV 文件</span></span></label><div class="import-actions"><button class="wide-action" type="button" data-preview-import><span>预览报告</span><i data-lucide="scan-search"></i></button><button class="mini-submit" type="submit" aria-label="导入 CSV"><i data-lucide="arrow-up-right"></i></button></div></form></article>
-            <article class="admin-action-card"><div class="action-icon accent-icon"><i data-lucide="scan-search"></i></div><div><span class="panel-kicker">分析 / 更新</span><h3>重建评论分析</h3><p>刷新词频、情绪、城市和价格聚合结果。</p></div><button class="wide-action" type="button" data-run-analysis><span>运行分析任务</span><i data-lucide="play"></i></button></article>
-            <article class="admin-action-card"><div class="action-icon cyan-icon"><i data-lucide="file-down"></i></div><div><span class="panel-kicker">CSV / 导出</span><h3>导出演唱会数据</h3><p>下载当前数据库中的演唱会记录 CSV。</p></div><a class="wide-action" href="{{ url_for('admin.export_concerts') }}"><span>下载 CSV</span><i data-lucide="download"></i></a></article>
+        <section class="admin-hero" data-reveal>
+            <div><span class="eyebrow"><span class="eyebrow-line"></span>数据治理中心</span><h1>管理后台</h1></div>
+            <div class="admin-status"><span class="status-tag"><i data-lucide="shield-check"></i>已登录</span><p>数据总览、演唱会管理、评论管理、导入导出与系统运维。</p></div>
         </section>
 
-        <section class="import-report-section" data-reveal>
-            <div class="section-toolbar"><div><span class="eyebrow"><span class="eyebrow-line"></span>导入预览</span><h2>CSV 校验报告</h2></div><span class="section-note">选择文件后点击预览</span></div>
-            <div id="import-report" class="import-report"><div class="empty-state">暂无预览报告</div></div>
+        <nav class="admin-tabs" data-reveal aria-label="管理后台功能">
+            <button class="admin-tab is-active" type="button" data-admin-tab="dashboard">仪表盘</button>
+            <button class="admin-tab" type="button" data-admin-tab="concerts">演唱会管理</button>
+            <button class="admin-tab" type="button" data-admin-tab="comments">评论管理</button>
+            <button class="admin-tab" type="button" data-admin-tab="import">导入导出</button>
+            <button class="admin-tab" type="button" data-admin-tab="ops">系统运维</button>
+        </nav>
+
+        <!-- 仪表盘 -->
+        <section class="admin-pane is-active" data-admin-pane="dashboard" data-reveal>
+            <div class="admin-stats-grid" id="admin-stats-grid">
+                <article class="admin-stat-card"><span class="panel-kicker">演唱会</span><strong id="stat-concerts">—</strong><span class="metric-note">场次记录</span></article>
+                <article class="admin-stat-card"><span class="panel-kicker">评论</span><strong id="stat-comments">—</strong><span class="metric-note">评论记录</span></article>
+                <article class="admin-stat-card"><span class="panel-kicker">艺人</span><strong id="stat-artists">—</strong><span class="metric-note">覆盖艺人</span></article>
+                <article class="admin-stat-card"><span class="panel-kicker">城市</span><strong id="stat-cities">—</strong><span class="metric-note">覆盖城市</span></article>
+            </div>
+            <div class="admin-dash-grid">
+                <article class="chart-panel analytics-panel"><div class="panel-head"><div><span class="panel-kicker">近 7 日场次</span><h3>演出日程分布</h3></div><i data-lucide="line-chart" class="panel-icon"></i></div><div id="admin-days-chart" class="chart analytics-chart" aria-label="近七日场次趋势"></div></article>
+                <article class="chart-panel analytics-panel"><div class="panel-head"><div><span class="panel-kicker">来源分布</span><h3>数据来源构成</h3></div><i data-lucide="pie-chart" class="panel-icon"></i></div><div id="admin-sources-chart" class="chart analytics-chart" aria-label="数据来源构成"></div></article>
+            </div>
+            <section class="jobs-section" data-reveal>
+                <div class="section-toolbar"><div><span class="eyebrow"><span class="eyebrow-line"></span>任务记录</span><h2>运行记录</h2></div><button class="icon-button" type="button" data-refresh-jobs aria-label="刷新运行记录"><i data-lucide="refresh-cw"></i></button></div>
+                <div class="jobs-table-wrap"><table class="jobs-table"><thead><tr><th>任务</th><th>状态</th><th>输入</th><th>成功</th><th>异常</th><th>启动时间</th><th>结果</th><th>操作</th></tr></thead><tbody id="jobs-body">{% for job in jobs %}<tr><td><span class="job-name">{{ job.job_type }}</span></td><td><span class="job-status status-{{ job.status }}">{{ '完成' if job.status == 'success' else '失败' if job.status == 'failed' else '运行中' }}</span></td><td>{{ job.input_count }}</td><td>{{ job.success_count }}</td><td>{{ job.failed_count }}</td><td class="mono">{{ job.started_at[:16].replace('T', ' ') }}</td><td>{{ job.message }}</td><td><button class="table-action" type="button" data-job-detail="{{ job.id }}">查看详情</button></td></tr>{% else %}<tr><td colspan="8" class="table-empty">暂无运行记录</td></tr>{% endfor %}</tbody></table></div><div id="job-detail" class="job-detail" hidden></div>
+            </section>
         </section>
 
-        <section class="jobs-section" data-reveal><div class="section-toolbar"><div><span class="eyebrow"><span class="eyebrow-line"></span>任务记录</span><h2>运行记录</h2></div><button class="icon-button" type="button" data-refresh-jobs aria-label="刷新运行记录"><i data-lucide="refresh-cw"></i></button></div><div class="jobs-table-wrap"><table class="jobs-table"><thead><tr><th>任务</th><th>状态</th><th>输入</th><th>成功</th><th>异常</th><th>启动时间</th><th>结果</th><th>操作</th></tr></thead><tbody id="jobs-body">{% for job in jobs %}<tr><td><span class="job-name">{{ job.job_type }}</span></td><td><span class="job-status status-{{ job.status }}">{{ '完成' if job.status == 'success' else '失败' if job.status == 'failed' else '运行中' }}</span></td><td>{{ job.input_count }}</td><td>{{ job.success_count }}</td><td>{{ job.failed_count }}</td><td class="mono">{{ job.started_at[:16].replace('T', ' ') }}</td><td>{{ job.message }}</td><td><button class="table-action" type="button" data-job-detail="{{ job.id }}">查看详情</button></td></tr>{% else %}<tr><td colspan="8" class="table-empty">暂无运行记录</td></tr>{% endfor %}</tbody></table></div><div id="job-detail" class="job-detail" hidden></div></section>
-
-        <section class="content-edit-section" data-reveal>
-            <div class="section-toolbar"><div><span class="eyebrow"><span class="eyebrow-line"></span>记录操作</span><h2>修改场次记录</h2></div><span class="section-note">按记录 ID 提交已支持字段</span></div>
-            <form id="edit-concert-form" class="edit-concert-form"><label class="field"><span>记录 ID</span><input id="edit-concert-id" type="number" min="1" required placeholder="例如 12"></label><label class="field"><span>名称</span><input id="edit-concert-name" type="text" placeholder="不修改可留空"></label><label class="field"><span>场馆</span><input id="edit-concert-venue" type="text" placeholder="不修改可留空"></label><label class="field"><span>时间</span><input id="edit-concert-time" type="datetime-local"></label><label class="field"><span>价格文本</span><input id="edit-concert-price" type="text" placeholder="例如 380-1280"></label><label class="field"><span>售票状态</span><select id="edit-concert-status"><option value="">不修改</option><option>待定</option><option>售票中</option><option>即将开售</option><option>已售罄</option><option>停售</option><option>预售</option><option>未开售</option><option>已结束</option></select><i data-lucide="chevron-down"></i></label><button class="wide-action" type="submit"><span>保存修改</span><i data-lucide="save"></i></button></form><div id="edit-result" class="edit-result" aria-live="polite"></div>
+        <!-- 演唱会管理 -->
+        <section class="admin-pane" data-admin-pane="concerts" data-reveal>
+            <div class="admin-toolbar">
+                <label class="field admin-search"><span>关键字</span><input id="concert-q" type="text" placeholder="艺人 / 演唱会 / 场馆"></label>
+                <label class="field"><span>艺人</span><select id="concert-artist-filter"><option value="">全部艺人</option></select><i data-lucide="chevron-down"></i></label>
+                <label class="field"><span>城市</span><select id="concert-city-filter"><option value="">全部城市</option></select><i data-lucide="chevron-down"></i></label>
+                <label class="field"><span>状态</span><select id="concert-status-filter"><option value="">全部状态</option></select><i data-lucide="chevron-down"></i></label>
+                <button class="btn btn-primary" type="button" data-concert-search><span>查询</span><i data-lucide="search"></i></button>
+                <button class="btn btn-ghost" type="button" data-concert-reset><span>重置</span><i data-lucide="rotate-ccw"></i></button>
+            </div>
+            <div class="manage-toolbar">
+                <span class="manage-count" id="concert-total">共 0 场</span>
+                <button class="btn btn-danger" type="button" data-concert-batch-delete disabled><span>批量删除</span><i data-lucide="trash-2"></i></button>
+            </div>
+            <div class="data-table-wrap"><table class="data-table">
+                <thead><tr><th><input type="checkbox" data-check-all-concerts aria-label="全选"></th><th>ID</th><th>艺人</th><th>演唱会</th><th>城市</th><th>时间</th><th>票价</th><th>状态</th><th>来源</th><th>操作</th></tr></thead>
+                <tbody id="concert-admin-body"><tr><td colspan="10" class="table-empty">加载中…</td></tr></tbody>
+            </table></div>
+            <div class="pager" id="concert-pager"></div>
         </section>
 
-        <section class="admin-foot-grid" data-reveal><div><span class="panel-kicker">运行环境</span><div class="stack-list"><span>FLASK</span><span>SQLALCHEMY</span><span>MYSQL READY</span><span>RULE ENGINE</span></div></div><div class="admin-foot-note"><i data-lucide="info"></i><span>本地默认使用 SQLite；设置 DATABASE_URL 后切换 MySQL。</span></div></section>
+        <!-- 评论管理 -->
+        <section class="admin-pane" data-admin-pane="comments" data-reveal>
+            <div class="admin-toolbar">
+                <label class="field admin-search"><span>关键字</span><input id="comment-q" type="text" placeholder="评论内容关键字"></label>
+                <label class="field"><span>艺人</span><select id="comment-artist-filter"><option value="">全部艺人</option></select><i data-lucide="chevron-down"></i></label>
+                <button class="btn btn-primary" type="button" data-comment-search><span>查询</span><i data-lucide="search"></i></button>
+                <button class="btn btn-ghost" type="button" data-comment-reset><span>重置</span><i data-lucide="rotate-ccw"></i></button>
+            </div>
+            <div class="manage-toolbar"><span class="manage-count" id="comment-total">共 0 条</span></div>
+            <div class="data-table-wrap"><table class="data-table">
+                <thead><tr><th>ID</th><th>演唱会 ID</th><th>评论内容</th><th>时间</th><th>点赞</th><th>地区</th><th>情感</th><th>操作</th></tr></thead>
+                <tbody id="comment-admin-body"><tr><td colspan="8" class="table-empty">加载中…</td></tr></tbody>
+            </table></div>
+            <div class="pager" id="comment-pager"></div>
+        </section>
+
+        <!-- 导入导出 -->
+        <section class="admin-pane" data-admin-pane="import" data-reveal>
+            <div class="admin-actions-grid">
+                <article class="admin-action-card import-card"><div class="action-icon"><i data-lucide="upload"></i></div><div><span class="panel-kicker">CSV / 导入</span><h3>导入数据</h3><p>选择演唱会或评论 CSV，可先预览校验报告。</p></div><form id="import-form" class="import-form"><select name="kind" aria-label="数据类型"><option value="concerts">演唱会信息</option><option value="comments">评论信息</option></select><label class="file-input"><input type="file" name="file" accept=".csv,text/csv" required><span><i data-lucide="file-up"></i><span data-file-name>选择 CSV 文件</span></span></label><div class="import-actions"><button class="wide-action" type="button" data-preview-import><span>预览报告</span><i data-lucide="scan-search"></i></button><button class="mini-submit" type="submit" aria-label="导入 CSV"><i data-lucide="arrow-up-right"></i></button></div></form></article>
+                <article class="admin-action-card"><div class="action-icon cyan-icon"><i data-lucide="file-down"></i></div><div><span class="panel-kicker">CSV / 导出</span><h3>导出演唱会数据</h3><p>下载当前数据库中的演唱会记录 CSV。</p></div><a class="wide-action" href="{{ url_for('admin.export_concerts') }}"><span>下载演唱会 CSV</span><i data-lucide="download"></i></a></article>
+                <article class="admin-action-card"><div class="action-icon lime-icon"><i data-lucide="file-down"></i></div><div><span class="panel-kicker">CSV / 导出</span><h3>导出评论数据</h3><p>下载当前数据库中的评论记录 CSV（含情感分）。</p></div><a class="wide-action" href="{{ url_for('admin.export_comments') }}"><span>下载评论 CSV</span><i data-lucide="download"></i></a></article>
+            </div>
+            <section class="import-report-section" data-reveal>
+                <div class="section-toolbar"><div><span class="eyebrow"><span class="eyebrow-line"></span>导入预览</span><h2>CSV 校验报告</h2></div><span class="section-note">选择文件后点击预览</span></div>
+                <div id="import-report" class="import-report"><div class="empty-state">暂无预览报告</div></div>
+            </section>
+        </section>
+
+        <!-- 系统运维 -->
+        <section class="admin-pane" data-admin-pane="ops" data-reveal>
+            <div class="admin-actions-grid">
+                <article class="admin-action-card"><div class="action-icon accent-icon"><i data-lucide="scan-search"></i></div><div><span class="panel-kicker">分析 / 更新</span><h3>重建评论分析</h3><p>刷新词频、情绪、城市和价格聚合结果。</p></div><button class="wide-action" type="button" data-run-analysis><span>运行分析任务</span><i data-lucide="play"></i></button></article>
+                <article class="admin-action-card"><div class="action-icon"><i data-lucide="zap"></i></div><div><span class="panel-kicker">缓存 / 运维</span><h3>清空分析缓存</h3><p>数据变更后强制刷新 Redis 分析缓存。</p></div><button class="wide-action" type="button" data-clear-cache><span>清空缓存</span><i data-lucide="refresh-cw"></i></button></article>
+                <article class="admin-action-card"><div class="action-icon lime-icon"><i data-lucide="database"></i></div><div><span class="panel-kicker">环境 / 状态</span><h3>系统信息</h3><p id="ops-info">Flask · SQLAlchemy · Redis 就绪</p></div><span class="stack-list"><span>FLASK</span><span>SQLALCHEMY</span><span>ECHARTS</span><span>REDIS</span></span></article>
+            </div>
+            <div class="admin-foot-grid" data-reveal>
+                <div><span class="panel-kicker">运行环境</span><div class="stack-list"><span>FLASK</span><span>SQLALCHEMY</span><span>MYSQL READY</span><span>RULE ENGINE</span></div></div>
+                <div class="admin-foot-note"><i data-lucide="info"></i><span>本地默认使用 SQLite；设置 DATABASE_URL 后切换 MySQL。Redis 未启动时看板自动降级为无缓存模式。</span></div>
+            </div>
+        </section>
     </main>
 </div>
 {% endblock %}

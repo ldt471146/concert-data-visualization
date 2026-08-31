@@ -7,7 +7,9 @@ from flask_login import current_user, login_required
 from .analysis import run_analysis
 from .cache import clear_cache
 from .extensions import db
-from .models import ConcertInfo, JobRun
+from sqlalchemy import func
+
+from .models import AnalysisResult, CommentInfo, ConcertInfo, JobRun
 from .services import create_job, finish_job, import_csv, parse_prices, seed_demo_data
 from .validation import SALE_STATUSES, parse_datetime_strict, validate_csv
 
@@ -229,3 +231,223 @@ def seed():
         db.session.rollback()
         return jsonify({"error": "示例数据初始化失败。"}), 500
 
+
+
+# ---------------------------------------------------------------------------
+# 管理后台增强接口：仪表盘统计 / 数据管理 / 运维
+# ---------------------------------------------------------------------------
+
+
+@admin.get("/api/stats")
+@login_required
+def stats():
+    """后台仪表盘统计：总量、来源分布、近 7 日场次趋势、最近评论样本。"""
+    concert_total = ConcertInfo.query.count()
+    comment_total = CommentInfo.query.count()
+    artist_total = ConcertInfo.query.with_entities(ConcertInfo.artist_name).distinct().count()
+    city_total = ConcertInfo.query.with_entities(ConcertInfo.city).distinct().count()
+
+    by_source_rows = (
+        ConcertInfo.query.with_entities(ConcertInfo.source_type, func.count(ConcertInfo.id))
+        .group_by(ConcertInfo.source_type).all()
+    )
+    sources = [
+        {"source": source or "未标注", "count": count}
+        for source, count in sorted(by_source_rows, key=lambda row: -row[1])
+    ]
+
+    job_total = JobRun.query.count()
+    failed_jobs = JobRun.query.filter(JobRun.status == "failed").count()
+
+    recent_days_rows = (
+        ConcertInfo.query.with_entities(
+            func.strftime("%Y-%m-%d", ConcertInfo.show_time),
+            func.count(ConcertInfo.id),
+        )
+        .group_by(func.strftime("%Y-%m-%d", ConcertInfo.show_time))
+        .order_by(func.strftime("%Y-%m-%d", ConcertInfo.show_time).desc())
+        .limit(7).all()
+    )
+    days = [{"date": day, "count": count} for day, count in reversed(recent_days_rows)]
+
+    recent_comments = (
+        CommentInfo.query.order_by(CommentInfo.comment_time.desc().nullslast())
+        .limit(5).all()
+    )
+
+    return jsonify({
+        "totals": {
+            "concerts": concert_total,
+            "comments": comment_total,
+            "artists": artist_total,
+            "cities": city_total,
+        },
+        "sources": sources,
+        "jobs": {"total": job_total, "failed": failed_jobs},
+        "recent_days": days,
+        "recent_comments": [comment.to_dict() for comment in recent_comments],
+    })
+
+
+@admin.get("/api/concerts")
+@login_required
+def list_concerts():
+    """演唱会分页管理：支持关键字、艺人、城市、状态筛选。"""
+    q = request.args.get("q", "").strip()
+    artist = request.args.get("artist", "").strip()
+    city = request.args.get("city", "").strip()
+    status = request.args.get("status", "").strip()
+    try:
+        page = max(1, int(request.args.get("page", 1) or 1))
+        size = min(100, max(5, int(request.args.get("size", 20) or 20)))
+    except ValueError:
+        page, size = 1, 20
+
+    query = ConcertInfo.query
+    if q:
+        like = f"%{q}%"
+        query = query.filter(
+            db.or_(
+                ConcertInfo.artist_name.like(like),
+                ConcertInfo.concert_name.like(like),
+                ConcertInfo.venue.like(like),
+            )
+        )
+    if artist:
+        query = query.filter(ConcertInfo.artist_name == artist)
+    if city:
+        query = query.filter(ConcertInfo.city == city)
+    if status:
+        query = query.filter(ConcertInfo.sale_status == status)
+
+    total = query.count()
+    items = (
+        query.order_by(ConcertInfo.show_time.desc())
+        .offset((page - 1) * size).limit(size).all()
+    )
+    return jsonify({
+        "items": [concert.to_dict() for concert in items],
+        "total": total,
+        "page": page,
+        "size": size,
+        "pages": max(1, (total + size - 1) // size),
+    })
+
+
+@admin.get("/api/concerts/summary")
+@login_required
+def concert_summary():
+    """管理后台筛选器选项：全部艺人、城市、售票状态（去重排序）。"""
+    artists = [row[0] for row in db.session.query(ConcertInfo.artist_name).distinct().order_by(ConcertInfo.artist_name).all()]
+    cities = [row[0] for row in db.session.query(ConcertInfo.city).distinct().order_by(ConcertInfo.city).all()]
+    statuses = [row[0] for row in db.session.query(ConcertInfo.sale_status).distinct().order_by(ConcertInfo.sale_status).all()]
+    return jsonify({"artists": artists, "cities": cities, "statuses": statuses})
+
+
+@admin.get("/api/comments")
+@login_required
+def list_comments():
+    """评论分页管理：支持评论内容、艺人名关键字筛选。"""
+    q = request.args.get("q", "").strip()
+    artist = request.args.get("artist", "").strip()
+    try:
+        page = max(1, int(request.args.get("page", 1) or 1))
+        size = min(100, max(5, int(request.args.get("size", 20) or 20)))
+    except ValueError:
+        page, size = 1, 20
+
+    query = CommentInfo.query
+    if q:
+        query = query.filter(CommentInfo.comment_text.like(f"%{q}%"))
+    if artist:
+        by_artist_ids = (
+            ConcertInfo.query.with_entities(ConcertInfo.id)
+            .filter(ConcertInfo.artist_name == artist).all()
+        )
+        ids = [row[0] for row in by_artist_ids]
+        if not ids:
+            return jsonify({"items": [], "total": 0, "page": page, "size": size, "pages": 1})
+        query = query.filter(CommentInfo.concert_id.in_(ids))
+
+    total = query.count()
+    items = (
+        query.order_by(CommentInfo.comment_time.desc().nullslast())
+        .offset((page - 1) * size).limit(size).all()
+    )
+    return jsonify({
+        "items": [comment.to_dict() for comment in items],
+        "total": total,
+        "page": page,
+        "size": size,
+        "pages": max(1, (total + size - 1) // size),
+    })
+
+
+@admin.delete("/api/comments/<int:comment_id>")
+@login_required
+def delete_comment(comment_id):
+    comment = db.session.get(CommentInfo, comment_id)
+    if not comment:
+        return jsonify({"error": "评论不存在。"}), 404
+    try:
+        db.session.delete(comment)
+        db.session.commit()
+        clear_cache()
+    except Exception:
+        db.session.rollback()
+        return jsonify({"error": "评论删除失败。"}), 500
+    return jsonify({"ok": True, "deleted_id": comment_id})
+
+
+@admin.post("/api/concerts/batch-delete")
+@login_required
+def batch_delete_concerts():
+    """批量删除演唱会：同步删除关联评论。"""
+    payload = request.get_json(silent=True) or {}
+    ids = payload.get("ids") or []
+    ids = [int(item) for item in ids if str(item).isdigit()]
+    if not ids:
+        return jsonify({"error": "未选择要删除的记录。"}), 400
+    try:
+        CommentInfo.query.filter(CommentInfo.concert_id.in_(ids)).delete(synchronize_session=False)
+        deleted = ConcertInfo.query.filter(ConcertInfo.id.in_(ids)).delete(synchronize_session=False)
+        db.session.commit()
+        clear_cache()
+    except Exception:
+        db.session.rollback()
+        return jsonify({"error": "批量删除失败。"}), 500
+    return jsonify({"ok": True, "deleted": deleted})
+
+
+@admin.get("/api/export/comments")
+@login_required
+def export_comments():
+    output = io.StringIO(newline="")
+    writer = csv.writer(output)
+    writer.writerow(
+        ["id", "concert_id", "comment_text", "comment_time", "like_count", "user_region", "sentiment_score", "source_url"]
+    )
+    for comment in CommentInfo.query.order_by(CommentInfo.comment_time.asc()).all():
+        writer.writerow(
+            [
+                comment.id,
+                comment.concert_id if comment.concert_id is not None else "",
+                comment.comment_text,
+                comment.comment_time.isoformat() if comment.comment_time else "",
+                comment.like_count if comment.like_count is not None else "",
+                comment.user_region or "",
+                comment.sentiment_score if comment.sentiment_score is not None else "",
+                comment.source_url,
+            ]
+        )
+    response = Response(output.getvalue(), mimetype="text/csv; charset=utf-8")
+    response.headers["Content-Disposition"] = "attachment; filename=comments.csv"
+    return response
+
+
+@admin.post("/api/cache/clear")
+@login_required
+def cache_clear():
+    """清空 Redis 分析缓存，常用在数据变更后强制刷新看板。"""
+    cleared = clear_cache()
+    return jsonify({"ok": True, "cleared": cleared})
