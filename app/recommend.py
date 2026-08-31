@@ -14,6 +14,7 @@ def price_matches(concert, low=None, high=None):
 def build_recommendations(filters=None, limit=4):
     filters = filters or {}
     query = ConcertInfo.query
+    category = filters.get("category")
     city = filters.get("city")
     status = filters.get("status")
     artist = filters.get("artist")
@@ -22,6 +23,8 @@ def build_recommendations(filters=None, limit=4):
     min_price = filters.get("min_price")
     max_price = filters.get("max_price")
 
+    if category and category != "全部":
+        query = query.filter(ConcertInfo.category == category)
     if city and city != "全部":
         query = query.filter(ConcertInfo.city == city)
     if status and status != "全部":

@@ -179,11 +179,16 @@ def dashboard():
 
 
 def _overview_meta(filters):
+    category = filters.get("category", "演唱会")
+    # 艺人/城市/状态列表跟随当前分类, 避免相声等非演唱会艺人进入筛选器
+    base = ConcertInfo.query
+    if category and category != "全部":
+        base = base.filter(ConcertInfo.category == category)
     return {
-        "artists": [item[0] for item in ConcertInfo.query.with_entities(ConcertInfo.artist_name).distinct().order_by(ConcertInfo.artist_name).all()],
+        "artists": [item[0] for item in base.with_entities(ConcertInfo.artist_name).distinct().order_by(ConcertInfo.artist_name).all()],
         "categories": [item[0] for item in ConcertInfo.query.with_entities(ConcertInfo.category).distinct().order_by(ConcertInfo.category).all()],
-        "cities": [item[0] for item in ConcertInfo.query.with_entities(ConcertInfo.city).distinct().order_by(ConcertInfo.city).all()],
-        "statuses": [item[0] for item in ConcertInfo.query.with_entities(ConcertInfo.sale_status).distinct().order_by(ConcertInfo.sale_status).all()],
+        "cities": [item[0] for item in base.with_entities(ConcertInfo.city).distinct().order_by(ConcertInfo.city).all()],
+        "statuses": [item[0] for item in base.with_entities(ConcertInfo.sale_status).distinct().order_by(ConcertInfo.sale_status).all()],
         "source": "本地公开数据快照",
         "filters": {
             "artist": filters["artist"],
