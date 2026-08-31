@@ -13,6 +13,7 @@ class ConcertInfo(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     artist_name = db.Column(db.String(80), nullable=False, index=True)
+    category = db.Column(db.String(30), nullable=False, default="演唱会", index=True)
     concert_name = db.Column(db.String(160), nullable=False)
     city = db.Column(db.String(60), nullable=False, index=True)
     venue = db.Column(db.String(120), nullable=False)
@@ -47,6 +48,7 @@ class ConcertInfo(db.Model):
         return {
             "id": self.id,
             "artist_name": self.artist_name,
+            "category": self.category,
             "concert_name": self.concert_name,
             "city": self.city,
             "venue": self.venue,

@@ -280,7 +280,7 @@ const calendarState = { year: new Date().getFullYear(), month: new Date().getMon
     };
 
     const renderFilters = (meta, current) => {
-        const options = [['filter-artist', meta.artists], ['filter-city', meta.cities], ['filter-status', meta.statuses]];
+        const options = [['filter-category', meta.categories], ['filter-artist', meta.artists], ['filter-city', meta.cities], ['filter-status', meta.statuses]];
         options.forEach(([id, values]) => {
             const select = document.getElementById(id);
             if (!select) return;

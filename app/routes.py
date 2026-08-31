@@ -43,6 +43,7 @@ def request_filters():
     args = request.args
     return {
         "artist": args.get("artist", "全部"),
+        "category": args.get("category", "全部"),
         "city": args.get("city", "全部"),
         "status": args.get("status", "全部"),
         "start": _date_value(args.get("start")),
@@ -56,6 +57,8 @@ def filter_concerts(filters):
     query = ConcertInfo.query
     if filters["artist"] and filters["artist"] != "全部":
         query = query.filter(ConcertInfo.artist_name == filters["artist"])
+    if filters["category"] and filters["category"] != "全部":
+        query = query.filter(ConcertInfo.category == filters["category"])
     if filters["city"] and filters["city"] != "全部":
         query = query.filter(ConcertInfo.city == filters["city"])
     if filters["status"] and filters["status"] != "全部":
@@ -138,11 +141,13 @@ def dashboard():
 def _overview_meta(filters):
     return {
         "artists": [item[0] for item in ConcertInfo.query.with_entities(ConcertInfo.artist_name).distinct().order_by(ConcertInfo.artist_name).all()],
+        "categories": [item[0] for item in ConcertInfo.query.with_entities(ConcertInfo.category).distinct().order_by(ConcertInfo.category).all()],
         "cities": [item[0] for item in ConcertInfo.query.with_entities(ConcertInfo.city).distinct().order_by(ConcertInfo.city).all()],
         "statuses": [item[0] for item in ConcertInfo.query.with_entities(ConcertInfo.sale_status).distinct().order_by(ConcertInfo.sale_status).all()],
         "source": "本地公开数据快照",
         "filters": {
             "artist": filters["artist"],
+            "category": filters["category"],
             "city": filters["city"],
             "status": filters["status"],
         },

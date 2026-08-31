@@ -51,17 +51,21 @@ set DATABASE_URL=mysql+pymysql://用户名:密码@127.0.0.1:3306/concert_analysi
 
 ## 数据与脚本
 
-数据主体为**国内真实演唱会 + 现场观演评论**，全部来源可标注（论文可复查）：
+数据为**多渠道真实演出 + 场次评论**，总量 **19 万+ 条**（场次 22618 + 评论 168576），全部来源可标注（论文可复查）：
 
-- `damai_concerts.csv` / `concerts_merged.csv`：大麦网演唱会分类 846 场真实演唱会（307 位艺人 / 140 城市），`scripts/export_damai.py` 从本地大麦爬虫库导出。
-- `comments_social_merged.csv` / `comments_input.csv`：B站演唱会视频评论（wbi 公开接口，无需登录，1088 条）+ 大麦场次评论（45 条），`scripts/collect_social_comments.py` 采集、`scripts/merge_social_comments.py` 合并。
-- 每条评论标注 `source_platform`（bilibili/damai）与 `source_url`；每条演唱会标注 `source_type` 与来源页面。
+- `damai_full_concerts.csv`：大麦网全部有效演出场次（演唱会/音乐会/音乐节等 6 分类，272 城市），`scripts/export_damai_full.py` 从本地大麦爬虫库导出。
+- `damai_full_comments.csv`：大麦场次真实评论 118412 条（每条挂具体场次，与演出直接相关）。
+- `comments_wyy_merged.csv`：网易云歌手热评 49060 条（按歌手关联艺人）。
+- `comments_social_merged.csv`：B站"XX 演唱会"视频评论 1069 条（含观演现场讨论）。
+- 前端支持**按分类筛选**（可聚焦演唱会主题）；每条记录保留 `source_url` 与 `collected_at` 可复查。
 
 数据脚本：
 
 ```bash
-# 大麦爬虫库 → 系统演唱会场次 CSV（本地 damai.db）
-C:/Users/Administrator/AppData/Local/Programs/Python/Python314/python.exe scripts/export_damai.py
+# 大麦爬虫库 → 全库有效场次 + 评论 CSV（本地 damai.db）
+C:/Users/Administrator/AppData/Local/Programs/Python/Python314/python.exe scripts/export_damai_full.py
+# 三渠道(大麦/网易云/B站) → 系统数据库全量重建
+C:/Users/Administrator/AppData/Local/Programs/Python/Python314/python.exe scripts/import_all_channels.py
 # B站"XX 演唱会"视频评论采集（wbi 签名公开接口，限速重试；--artists 指定艺人）
 C:/Users/Administrator/AppData/Local/Programs/Python/Python314/python.exe scripts/collect_social_comments.py --artists "薛之谦,周杰伦"
 # 评论合并去重 → comments_social_merged.csv

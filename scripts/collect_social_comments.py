@@ -274,6 +274,7 @@ def main():
     parser = argparse.ArgumentParser(description="B站演唱会评论采集")
     parser.add_argument("--out", default=str(BASE_DIR / "data" / "raw" / "social_comments.csv"))
     parser.add_argument("--artists", default="", help="逗号分隔艺人名单, 默认用大麦演唱会艺人")
+    parser.add_argument("--artists-file", default="", help="艺人名单文件(每行一个), 优先于 --artists")
     parser.add_argument("--max-per-artist", type=int, default=30)
     parser.add_argument("--max-artists", type=int, default=200)
     args = parser.parse_args()
@@ -281,7 +282,11 @@ def main():
     out_path = Path(args.out)
 
     # 大麦演唱会主体 + 评论（仅当未指定 --artists 时，避免并行分片重复导出）
-    if args.artists:
+    if args.artists_file:
+        concerts, damai_comments = [], []
+        artists = [l.strip() for l in Path(args.artists_file).read_text(encoding="utf-8").splitlines() if l.strip()]
+        print(f"[bili] 按文件采集 {len(artists)} 位艺人（跳过导出）", flush=True)
+    elif args.artists:
         concerts, damai_comments = [], []
         artists = [a.strip() for a in args.artists.split(",") if a.strip()]
         print(f"[bili] 按名单采集 {len(artists)} 位艺人（跳过导出）", flush=True)

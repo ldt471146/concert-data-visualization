@@ -31,3 +31,8 @@ data/raw/comments_social.csv
 data/raw/bili_*.csv
 data/raw/bili_*.log
 data/raw/bili_artists.txt
+data/raw/damai_full_concerts.csv
+data/raw/damai_full_comments.csv
+data/raw/damai_music_concerts.csv
+data/raw/damai_music_comments.csv
+data/raw/damai_comments.csv
