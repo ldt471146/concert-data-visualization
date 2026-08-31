@@ -240,6 +240,106 @@ def health():
     })
 
 
+@main.get("/api/concerts/<int:concert_id>")
+def concert_detail(concert_id):
+    """场次详情: 基本信息 + 票价明细 + 评论分页。"""
+    concert = ConcertInfo.query.get(concert_id)
+    if not concert:
+        return jsonify({"error": "场次不存在"}), 404
+    page = max(1, request.args.get("page", 1, type=int))
+    per_page = min(20, max(5, request.args.get("per_page", 10, type=int)))
+    by_likes = request.args.get("sort") == "likes"
+    base = CommentInfo.query.filter(CommentInfo.concert_id == concert_id)
+    total = base.count()
+    query = base.order_by(CommentInfo.like_count.desc() if by_likes else CommentInfo.comment_time.desc())
+    comments = query.offset((page - 1) * per_page).limit(per_page).all()
+    return jsonify({
+        "concert": concert.to_dict(),
+        "price_details": [
+            {"label": d.price_label, "price": float(d.price) if d.price is not None else None, "text": d.price_text}
+            for d in concert.price_details
+        ],
+        "comments": [c.to_dict() for c in comments],
+        "pagination": {"page": page, "per_page": per_page, "total": total, "pages": (total + per_page - 1) // per_page},
+    })
+
+
+@main.get("/api/comments/page")
+def comments_page():
+    """按筛选条件分页拉取评论 (艺人在场次详情内翻页时使用)。"""
+    filters = request_filters()
+    concerts = filter_concerts(filters)
+    ids = {c.id for c in concerts}
+    page = max(1, request.args.get("page", 1, type=int))
+    per_page = min(30, max(5, request.args.get("per_page", 12, type=int)))
+    sort = request.args.get("sort", "time")
+    if not ids:
+        return jsonify({"comments": [], "pagination": {"page": page, "per_page": per_page, "total": 0, "pages": 0}})
+    base = CommentInfo.query.filter(CommentInfo.concert_id.in_(ids))
+    total = base.count()
+    query = base.order_by(
+        CommentInfo.like_count.desc() if sort == "likes" else CommentInfo.comment_time.desc()
+    )
+    comments = query.offset((page - 1) * per_page).limit(per_page).all()
+    return jsonify({
+        "comments": [c.to_dict() for c in comments],
+        "pagination": {"page": page, "per_page": per_page, "total": total, "pages": (total + per_page - 1) // per_page},
+    })
+
+
+@main.get("/api/search")
+def search():
+    """关键字搜索: 艺人名 / 场次名 / 城市 / 场馆 / 分类 模糊匹配。"""
+    q = (request.args.get("q") or "").strip()
+    limit = min(50, max(1, request.args.get("limit", 20, type=int)))
+    if not q:
+        return jsonify({"items": [], "total": 0})
+    from sqlalchemy import or_
+    like = f"%{q}%"
+    query = (
+        ConcertInfo.query.filter(
+            or_(
+                ConcertInfo.artist_name.like(like),
+                ConcertInfo.concert_name.like(like),
+                ConcertInfo.city.like(like),
+                ConcertInfo.venue.like(like),
+                ConcertInfo.category.like(like),
+            )
+        )
+        .order_by(ConcertInfo.show_time.asc())
+        .limit(limit)
+        .all()
+    )
+    return jsonify({"items": [c.to_dict() for c in query], "total": len(query), "query": q})
+
+
+@main.get("/api/analytics/artist-trend")
+def artist_trend():
+    """艺人热度时间趋势: 指定艺人每月场次数。"""
+    artist = request.args.get("artist", "")
+    months = request.args.get("months", 12, type=int)
+    if not artist:
+        return jsonify({"items": [], "artist": ""})
+    start = datetime.now() - timedelta(days=months * 31)
+    rows = (
+        ConcertInfo.query.filter(
+            ConcertInfo.artist_name == artist, ConcertInfo.show_time >= start
+        )
+        .all()
+    )
+    counter = Counter(r.show_time.strftime("%Y-%m") for r in rows)
+    months_list = []
+    current = start.replace(day=1)
+    while current <= datetime.now():
+        key = current.strftime("%Y-%m")
+        months_list.append({"month": key, "concerts": counter.get(key, 0)})
+        if current.month == 12:
+            current = current.replace(year=current.year + 1, month=1)
+        else:
+            current = current.replace(month=current.month + 1)
+    return jsonify({"items": months_list, "artist": artist})
+
+
 def _filter_warnings():
     """Return human-readable warnings while keeping invalid filters harmless."""
     warnings = []

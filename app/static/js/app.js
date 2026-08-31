@@ -310,7 +310,7 @@ const calendarState = { year: new Date().getFullYear(), month: new Date().getMon
             const id = Number(item.id);
             const favorite = favorites.includes(id);
             const compared = comparison.some((entry) => Number(entry.id) === id);
-            return `<article class="schedule-item"><div class="schedule-date">${escapeHTML(item.show_date)}<small>${escapeHTML(item.show_weekday)}</small></div><div class="schedule-main"><h3>${escapeHTML(item.concert_name)}</h3><p><i data-lucide="map-pin"></i>${escapeHTML(item.city)} · ${escapeHTML(item.venue)}</p><span class="sale-status ${saleClass(item.sale_status)}">${escapeHTML(item.sale_status)}</span></div><div class="schedule-price">¥${formatNumber(item.min_price)}<small>起 / ${formatNumber(item.comment_count)} 评论</small></div><div class="schedule-actions"><button class="table-action concert-action ${favorite ? 'is-active' : ''}" type="button" data-concert-action="favorite" data-concert-id="${id}" title="${favorite ? '取消收藏' : '收藏这场演出'}" aria-label="${favorite ? '取消收藏' : '收藏这场演出'}"><i data-lucide="${favorite ? 'star' : 'star'}"></i></button><button class="table-action concert-action ${compared ? 'is-active' : ''}" type="button" data-concert-action="comparison" data-concert-id="${id}" title="${compared ? '移出对比' : '加入对比'}" aria-label="${compared ? '移出对比' : '加入对比'}"><i data-lucide="${compared ? 'check' : 'plus'}"></i></button></div></article>`;
+            return `<article class="schedule-item"><div class="schedule-date">${escapeHTML(item.show_date)}<small>${escapeHTML(item.show_weekday)}</small></div><div class="schedule-main"><h3><button type="button" class="concert-detail-link" data-concert-detail="${id}" title="查看场次详情">${escapeHTML(item.concert_name)}</button></h3><p><i data-lucide="map-pin"></i>${escapeHTML(item.city)} · ${escapeHTML(item.venue)}</p><span class="sale-status ${saleClass(item.sale_status)}">${escapeHTML(item.sale_status)}</span></div><div class="schedule-price">¥${formatNumber(item.min_price)}<small>起 / ${formatNumber(item.comment_count)} 评论</small></div><div class="schedule-actions"><button class="table-action concert-action ${favorite ? 'is-active' : ''}" type="button" data-concert-action="favorite" data-concert-id="${id}" title="${favorite ? '取消收藏' : '收藏这场演出'}" aria-label="${favorite ? '取消收藏' : '收藏这场演出'}"><i data-lucide="star"></i></button><button class="table-action concert-action ${compared ? 'is-active' : ''}" type="button" data-concert-action="comparison" data-concert-id="${id}" title="${compared ? '移出对比' : '加入对比'}" aria-label="${compared ? '移出对比' : '加入对比'}"><i data-lucide="${compared ? 'check' : 'plus'}"></i></button><button class="table-action concert-detail-btn" type="button" data-concert-detail="${id}" title="查看详情" aria-label="查看详情"><i data-lucide="eye"></i></button></div></article>`;
         }).join('') : '<div class="empty-state">当前筛选没有场次</div>';
         refreshIcons();
         renderFavorites();
@@ -411,6 +411,112 @@ const calendarState = { year: new Date().getFullYear(), month: new Date().getMon
         }
     };
 
+    // ===== 场次详情抽屉 =====
+    const openDetail = async (id) => {
+        const backdrop = document.getElementById('detail-backdrop');
+        const drawer = document.getElementById('detail-drawer');
+        const body = document.getElementById('detail-body');
+        if (!drawer || !body) return;
+        body.innerHTML = '<div class="detail-loading">正在加载场次详情…</div>';
+        drawer.hidden = false;
+        if (backdrop) backdrop.hidden = false;
+        document.body.classList.add('drawer-open');
+        try {
+            const data = await fetchJSON(`/api/concerts/${Number(id)}`);
+            renderDetail(data);
+        } catch (error) {
+            body.innerHTML = `<div class="empty-state">${escapeHTML(error.message)}</div>`;
+        }
+        refreshIcons();
+    };
+    const closeDetail = () => {
+        const backdrop = document.getElementById('detail-backdrop');
+        const drawer = document.getElementById('detail-drawer');
+        if (drawer) drawer.hidden = true;
+        if (backdrop) backdrop.hidden = true;
+        document.body.classList.remove('drawer-open');
+    };
+    const renderDetail = (data) => {
+        const c = data.concert || {};
+        const body = document.getElementById('detail-body');
+        const priceRows = (data.price_details || []).slice(0, 8).map((p) => `<tr><td>${escapeHTML(p.label)}</td><td class="mono">¥${formatNumber(p.price)}</td><td>${escapeHTML(p.text || '')}</td></tr>`).join('');
+        const comments = (data.comments || []).map((cm) => `<article class="detail-comment"><p>${escapeHTML(cm.comment_text)}</p><footer><span>${escapeHTML(cm.user_region || '未知地区')}</span><span class="mono">❤ ${formatNumber(cm.like_count)}</span></footer></article>`).join('') || '<div class="empty-state">暂无评论</div>';
+        body.innerHTML = `
+            <div class="detail-head"><span class="panel-kicker">${escapeHTML(c.category || '演唱会')}</span><h2>${escapeHTML(c.concert_name)}</h2>
+            <p><i data-lucide="map-pin"></i>${escapeHTML(c.city)} · ${escapeHTML(c.venue)}</p>
+            <p><i data-lucide="calendar"></i>${escapeHTML(c.show_date || '')} ${escapeHTML(c.show_weekday || '')} <span class="sale-status ${saleClass(c.sale_status)}">${escapeHTML(c.sale_status)}</span></p>
+            <p><i data-lucide="ticket"></i>¥${formatNumber(c.min_price)} 起${c.max_price ? ` ~ ¥${formatNumber(c.max_price)}` : ''}</p>
+            ${c.source_url ? `<p><a href="${escapeHTML(c.source_url)}" target="_blank" rel="noopener" class="inline-link">查看大麦原页 <i data-lucide="arrow-up-right"></i></a></p>` : ''}</div>
+            <div class="detail-section"><h3>票价明细</h3>${priceRows ? `<table class="detail-table"><thead><tr><th>票档</th><th>价格</th><th>说明</th></tr></thead><tbody>${priceRows}</tbody></table>` : '<div class="empty-state">暂无票价明细</div>'}</div>
+            <div class="detail-section"><h3>观众评论 <small class="mono">共 ${formatNumber(data.pagination?.total || 0)} 条</small></h3><div class="detail-comments">${comments}</div>
+            <div class="detail-pager"><button type="button" class="btn btn-ghost" data-detail-page="prev" ${data.pagination?.page <= 1 ? 'disabled' : ''}>上一页</button><span class="mono">${data.pagination?.page || 1} / ${data.pagination?.pages || 1}</span><button type="button" class="btn btn-ghost" data-detail-page="next" ${data.pagination?.page >= (data.pagination?.pages || 1) ? 'disabled' : ''}>下一页</button></div></div>`;
+        body.querySelectorAll('[data-detail-page]').forEach((btn) => btn.addEventListener('click', () => {
+            const page = btn.dataset.detailPage === 'next' ? (data.pagination.page + 1) : (data.pagination.page - 1);
+            openDetailPage(c.id, page);
+        }));
+    };
+    const openDetailPage = async (id, page) => {
+        const body = document.getElementById('detail-body');
+        if (!body) return;
+        body.innerHTML = '<div class="detail-loading">加载评论…</div>';
+        try {
+            const data = await fetchJSON(`/api/concerts/${Number(id)}?page=${page}`);
+            renderDetail(data);
+        } catch (error) {
+            body.innerHTML = `<div class="empty-state">${escapeHTML(error.message)}</div>`;
+        }
+        refreshIcons();
+    };
+
+    // ===== 实时搜索 =====
+    let searchTimer = null;
+    const bindSearch = () => {
+        const input = document.getElementById('global-search');
+        const results = document.getElementById('search-results');
+        if (!input || !results) return;
+        input.addEventListener('keydown', (event) => {
+            if (event.key !== 'Enter') return;
+            event.preventDefault();
+            const q = input.value.trim();
+            if (!q) return;
+            results.hidden = false;
+            results.innerHTML = '<div class="search-loading">搜索中…</div>';
+            fetchJSON(`/api/search?q=${encodeURIComponent(q)}`).then((data) => {
+                const items = data.items || [];
+                results.innerHTML = items.length ? items.slice(0, 12).map((item) => `<button type="button" class="search-result-item" data-search-id="${Number(item.id)}"><strong>${escapeHTML(item.concert_name)}</strong><span>${escapeHTML(item.artist_name)} · ${escapeHTML(item.city)} · ${escapeHTML(item.show_date)}</span></button>`).join('') : '<div class="search-empty">未找到「' + escapeHTML(q) + '」相关场次</div>';
+                results.querySelectorAll('[data-search-id]').forEach((btn) => btn.addEventListener('click', () => {
+                    openDetail(Number(btn.dataset.searchId));
+                    results.hidden = true;
+                }));
+                refreshIcons();
+            }).catch((error) => { results.innerHTML = `<div class="search-empty">${escapeHTML(error.message)}</div>`; });
+        });
+        input.addEventListener('input', () => { results.hidden = true; });
+        document.addEventListener('click', (event) => { if (!results.contains(event.target) && event.target !== input) results.hidden = true; });
+    };
+
+    // ===== 城市柱状图点击联动 =====
+    const bindChartDrill = () => {
+        const cityChart = getChart('city-chart');
+        if (!cityChart) return;
+        cityChart.on('click', (params) => {
+            const city = params?.name;
+            if (!city || city === '全部') return;
+            const form = document.getElementById('filter-form');
+            if (!form) return;
+            const citySelect = form.querySelector('[name="city"]');
+            if (citySelect) citySelect.value = city;
+            const cityPref = document.getElementById('preference-city');
+            if (cityPref) cityPref.value = city;
+            loadDashboard(buildQueryForForm(form));
+            toast(`已按「${city}」筛选`);
+        });
+    };
+    const buildQueryForForm = (form) => {
+        const values = Object.fromEntries(new FormData(form).entries());
+        return buildQuery(values);
+    };
+
     const initDashboard = () => {
         const form = document.getElementById('filter-form');
         const buildFilterQuery = () => buildQuery(Object.fromEntries(new FormData(form).entries()));
@@ -453,6 +559,16 @@ const calendarState = { year: new Date().getFullYear(), month: new Date().getMon
         window.addEventListener('resize', () => charts.forEach((chart) => chart.resize()));
         initMobileMenu();
         initAnchors();
+        // 交互增强: 详情抽屉 / 搜索 / 图表联动 / 键盘关闭
+        document.getElementById('concert-list')?.addEventListener('click', (event) => {
+            const trigger = event.target.closest('[data-concert-detail]');
+            if (trigger) openDetail(Number(trigger.dataset.concertDetail));
+        });
+        document.querySelector('[data-drawer-close]')?.addEventListener('click', closeDetail);
+        document.getElementById('detail-backdrop')?.addEventListener('click', closeDetail);
+        document.addEventListener('keydown', (event) => { if (event.key === 'Escape') closeDetail(); });
+        bindSearch();
+        window.addEventListener('load', () => setTimeout(bindChartDrill, 800));
         loadDashboard(buildQuery({ city: preferences.city, max_price: preferences.budget, status: preferences.status, artist: preferences.artist }));
     };
 

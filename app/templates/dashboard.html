@@ -57,6 +57,12 @@
             <article class="metric-card metric-accent"><div class="metric-label"><i data-lucide="heart-pulse"></i><span>评论情绪</span></div><strong><span id="metric-sentiment">0</span><small>/100</small></strong><span class="metric-note">评论平均分</span><span class="metric-index">04</span></article>
         </section>
 
+        <section class="search-strip" aria-label="搜索" data-reveal>
+            <div class="filter-title"><span class="filter-number">/</span><span>搜索场次</span></div>
+            <label class="search-field"><i data-lucide="search"></i><input id="global-search" type="search" placeholder="输入艺人 / 场次 / 城市 / 场馆名称，回车搜索…" autocomplete="off"></label>
+            <div id="search-results" class="search-results" hidden></div>
+        </section>
+
         <section class="filter-strip" aria-label="数据筛选" data-reveal>
             <div class="filter-title"><span class="filter-number">/</span><span>筛选条件</span></div>
             <form id="filter-form" class="filter-form">
@@ -133,6 +139,12 @@
             <div class="favorite-summary"><span>已收藏 <strong id="favorite-count">0</strong> 场</span><div id="favorite-list" class="favorite-list"><span>暂无收藏</span></div></div>
             <div id="comparison-list" class="comparison-list"><div class="empty-state">从场次列表加入 2 至 3 场后开始对比</div></div>
         </section>
+
+        <section class="drawer-backdrop" id="detail-backdrop" hidden></section>
+        <aside class="detail-drawer" id="detail-drawer" aria-label="场次详情" hidden>
+            <button class="drawer-close" type="button" data-drawer-close aria-label="关闭详情"><i data-lucide="x"></i></button>
+            <div id="detail-body"></div>
+        </aside>
 
         <section class="recommend-section" id="recommendations" data-reveal>
             <div class="recommend-header"><div><span class="eyebrow"><span class="eyebrow-line"></span>推荐结果</span><h2>适合你的场次</h2></div><p>根据筛选条件、偏好、讨论度和售票状态生成。</p></div>

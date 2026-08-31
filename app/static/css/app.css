@@ -553,3 +553,44 @@ h1 em, h2 em { color: var(--lime); font-style: normal; }
 .pager-btn.is-active { background: var(--lime); color: #0a0f15; border-color: var(--lime); font-weight: 600; }
 .pager-btn:disabled { opacity: .35; cursor: not-allowed; }
 .lime-icon { color: var(--lime); }
+
+/* ===== 搜索条 ===== */
+.search-strip { display: flex; align-items: center; gap: 14px; padding: 14px 18px; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); margin-bottom: 14px; flex-wrap: wrap; }
+.search-field { position: relative; flex: 1; min-width: 240px; }
+.search-field i { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--muted); width: 15px; height: 15px; }
+.search-field input { width: 100%; padding: 10px 12px 10px 34px; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; color: var(--ink); font: 13px var(--mono); outline: none; }
+.search-field input:focus { border-color: var(--lime); box-shadow: 0 0 0 2px rgba(220,255,88,.12); }
+.search-results { position: absolute; z-index: 60; left: 0; right: 0; top: calc(100% + 6px); background: var(--panel); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 18px 40px rgba(0,0,0,.5); max-height: 360px; overflow: auto; }
+.search-result-item { display: block; width: 100%; text-align: left; padding: 10px 14px; background: none; border: 0; border-bottom: 1px solid var(--line); cursor: pointer; }
+.search-result-item:hover { background: rgba(220,255,88,.06); }
+.search-result-item strong { display: block; color: var(--ink); font: 13px var(--sans); margin-bottom: 3px; }
+.search-result-item span { color: var(--muted); font: 11px var(--mono); }
+.search-loading, .search-empty { padding: 14px; color: var(--muted); font: 12px var(--mono); text-align: center; }
+
+/* ===== 详情抽屉 ===== */
+.drawer-backdrop { position: fixed; inset: 0; background: rgba(5,10,14,.72); z-index: 90; }
+.drawer-open { overflow: hidden; }
+.detail-drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(480px, 92vw); background: var(--panel); border-left: 1px solid var(--line); z-index: 95; overflow-y: auto; padding: 26px 24px; box-shadow: -24px 0 60px rgba(0,0,0,.5); animation: drawerIn .28s cubic-bezier(.22,.68,.35,1); }
+@keyframes drawerIn { from { transform: translateX(40px); opacity: 0; } to { transform: none; opacity: 1; } }
+.drawer-close { position: sticky; top: 0; float: right; width: 34px; height: 34px; display: grid; place-items: center; background: var(--bg); border: 1px solid var(--line); border-radius: 50%; color: var(--muted); cursor: pointer; z-index: 2; }
+.drawer-close:hover { color: var(--coral); border-color: var(--coral); }
+.detail-loading { padding: 40px 0; text-align: center; color: var(--muted); font: 12px var(--mono); }
+.detail-head { padding-bottom: 18px; border-bottom: 1px solid var(--line); margin-bottom: 20px; }
+.detail-head h2 { font-size: 21px; line-height: 1.35; margin: 8px 0 12px; color: var(--ink); }
+.detail-head p { display: flex; align-items: center; gap: 8px; color: var(--muted); font: 13px var(--mono); margin: 6px 0; }
+.detail-head p i { width: 14px; height: 14px; }
+.detail-section { margin-bottom: 22px; }
+.detail-section h3 { font: 600 13px var(--sans); letter-spacing: .04em; color: var(--ink); margin-bottom: 12px; text-transform: uppercase; }
+.detail-section h3 small { color: var(--muted); font: 11px var(--mono); }
+.detail-table { width: 100%; border-collapse: collapse; font: 12px var(--mono); }
+.detail-table th { text-align: left; color: var(--muted); font-weight: 400; padding: 7px 8px; border-bottom: 1px solid var(--line); }
+.detail-table td { padding: 8px; border-bottom: 1px solid rgba(216,231,223,.05); color: var(--ink); }
+.detail-comments { display: grid; gap: 10px; }
+.detail-comment { background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+.detail-comment p { color: var(--ink); font-size: 13px; line-height: 1.6; }
+.detail-comment footer { display: flex; justify-content: space-between; margin-top: 8px; color: var(--muted); font: 11px var(--mono); }
+.detail-pager { display: flex; justify-content: space-between; align-items: center; margin-top: 14px; }
+.detail-pager span { color: var(--muted); font: 11px var(--mono); }
+.concert-detail-link { background: none; border: 0; padding: 0; color: var(--ink); font: 600 14px var(--sans); text-align: left; cursor: pointer; }
+.concert-detail-link:hover { color: var(--lime); }
+.concert-detail-btn { border-color: var(--line) !important; }

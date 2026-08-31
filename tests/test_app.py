@@ -213,3 +213,48 @@ def test_admin_export_comments(client):
     response = client.get("/admin/api/export/comments")
     assert response.status_code == 200
     assert response.data[:6] == b"id,con"
+
+
+def test_concert_detail_and_pagination(client):
+    """场次详情接口: 基本信息 + 票价 + 评论分页。"""
+    detail = client.get("/api/concerts/1")
+    assert detail.status_code == 200
+    body = detail.json
+    assert body["concert"]["id"] == 1
+    assert body["pagination"]["page"] == 1
+    assert body["pagination"]["pages"] >= 1
+    assert body["pagination"]["total"] >= 0
+    # 翻页
+    page2 = client.get("/api/concerts/1?page=9999")
+    assert page2.status_code == 200
+    # 不存在返回 404
+    missing = client.get("/api/concerts/9999999")
+    assert missing.status_code == 404
+
+
+def test_search_endpoint(client):
+    """关键字搜索接口。"""
+    resp = client.get("/api/search?q=test")
+    assert resp.status_code == 200
+    assert resp.json["query"] == "test"
+
+
+def test_comments_page_endpoint(client):
+    """评论分页接口（按筛选+排序）。"""
+    resp = client.get("/api/comments/page?page=1&sort=likes")
+    assert resp.status_code == 200
+    assert resp.json["pagination"]["page"] == 1
+    assert resp.json["pagination"]["total"] >= 0
+    assert len(resp.json["comments"]) <= 30
+
+
+def test_artist_trend_endpoint(client):
+    """艺人热度时间趋势接口。"""
+    resp = client.get("/api/analytics/artist-trend?artist=nonexistent-artist")
+    assert resp.status_code == 200
+    assert resp.json["artist"] == "nonexistent-artist"
+    assert isinstance(resp.json["items"], list)
+    # 缺少艺人参数时返回空列表
+    empty = client.get("/api/analytics/artist-trend")
+    assert empty.status_code == 200
+    assert empty.json["items"] == []
