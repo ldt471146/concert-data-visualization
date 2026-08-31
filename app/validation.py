@@ -23,6 +23,9 @@ SALE_STATUSES = frozenset(
         "已下架",
         "筹备中",
         "场次待定",
+        "去购票",
+        "已开售",
+        "已售罄-去购票",
     }
 )
 MAX_COMMENT_LENGTH = 2000

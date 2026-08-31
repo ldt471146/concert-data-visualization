@@ -47,9 +47,11 @@ def create_app(test_config=None):
             snapshot = merged if merged.exists() else raw_dir / "concerts.csv"
             load_local_concert_snapshot(snapshot)
             comments_in = raw_dir / "comments_input.csv"
-            if comments_in.exists() and not db.session.query(
-                __import__("app.models", fromlist=["CommentInfo"]).CommentInfo.id
-            ).first():
+            if comments_in.exists():
+                from .models import CommentInfo as _CI
+                count_before = _CI.query.count()
                 load_local_comment_snapshot(comments_in)
+                if _CI.query.count() == count_before:
+                    pass  # 已导入过或导入 0 条，保持现状
 
     return app

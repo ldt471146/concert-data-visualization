@@ -27,3 +27,7 @@ data/raw/musicbrainz_events_concert_only.csv
 data/raw/nyphil_concerts.csv
 data/raw/wyy*_part_*.csv
 data/raw/wyy4_top60.txt
+data/raw/comments_social.csv
+data/raw/bili_*.csv
+data/raw/bili_*.log
+data/raw/bili_artists.txt

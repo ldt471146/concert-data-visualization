@@ -51,27 +51,22 @@ set DATABASE_URL=mysql+pymysql://用户名:密码@127.0.0.1:3306/concert_analysi
 
 ## 数据与脚本
 
-原始验证快照位于 `data/raw/`，清洗脚本输出到 `data/cleaned/`。除最初 9 来源快照（78 条）外，系统已扩充为**国内演唱会 + 公开评论**两条规模化数据：
+数据主体为**国内真实演唱会 + 现场观演评论**，全部来源可标注（论文可复查）：
 
-- `piaoniu_concerts.csv`：票牛网演唱会全量采集（爬虫，真实国内明星演唱会）。
-- `showstart_concerts.csv`：秀动网演出列表爬虫采集（175 场真实国内演出）。
-- `comments_wyy.csv` / `wyy_part_{0..5}.csv`：网易云音乐公开评论接口采集（无需登录，按艺人×热门歌曲×热评规模化）。
-- `concerts_merged.csv`：`scripts/merge_datasets.py` 按（艺人、名称、场馆、日期）指纹合并去重后的统一演唱会快照；每条记录保留 `source_type`、`source_url` 和 `collected_at`，可随时复查「哪部分是爬取的、哪部分是公开数据」。
+- `damai_concerts.csv` / `concerts_merged.csv`：大麦网演唱会分类 846 场真实演唱会（307 位艺人 / 140 城市），`scripts/export_damai.py` 从本地大麦爬虫库导出。
+- `comments_social_merged.csv` / `comments_input.csv`：B站演唱会视频评论（wbi 公开接口，无需登录，1088 条）+ 大麦场次评论（45 条），`scripts/collect_social_comments.py` 采集、`scripts/merge_social_comments.py` 合并。
+- 每条评论标注 `source_platform`（bilibili/damai）与 `source_url`；每条演唱会标注 `source_type` 与来源页面。
 
-数据扩充脚本：
+数据脚本：
 
 ```bash
-# 票牛网演唱会全量采集（爬虫，低频，断电续采）
-C:/Users/Administrator/AppData/Local/Programs/Python/Python314/python.exe scripts/collect_piaoniu.py
-# 秀动网演出列表爬虫（爬虫，低频）
-C:/Users/Administrator/AppData/Local/Programs/Python/Python314/python.exe scripts/collect_showstart.py
-# 网易云音乐公开评论采集（公开接口，可并行分片：--artists-file / --out / --songs / --pages）
-C:/Users/Administrator/AppData/Local/Programs/Python/Python314/python.exe scripts/collect_wyy_comments.py
-# 评论分片合并
-C:/Users/Administrator/AppData/Local/Programs/Python/Python314/python.exe scripts/merge_wyy_parts.py
-# 多来源演唱会合并去重
-C:/Users/Administrator/AppData/Local/Programs/Python/Python314/python.exe scripts/merge_datasets.py
-# 网易云评论 → 系统评论导入格式（按艺人关联演唱会场次）
+# 大麦爬虫库 → 系统演唱会场次 CSV（本地 damai.db）
+C:/Users/Administrator/AppData/Local/Programs/Python/Python314/python.exe scripts/export_damai.py
+# B站"XX 演唱会"视频评论采集（wbi 签名公开接口，限速重试；--artists 指定艺人）
+C:/Users/Administrator/AppData/Local/Programs/Python/Python314/python.exe scripts/collect_social_comments.py --artists "薛之谦,周杰伦"
+# 评论合并去重 → comments_social_merged.csv
+C:/Users/Administrator/AppData/Local/Programs/Python/Python314/python.exe scripts/merge_social_comments.py
+# 评论关联演唱会场次 → comments_input.csv
 C:/Users/Administrator/AppData/Local/Programs/Python/Python314/python.exe scripts/build_comments_input.py
 ```
 
@@ -82,7 +77,7 @@ C:/Users/Administrator/AppData/Local/Programs/Python/Python314/python.exe script
 C:/Users/Administrator/AppData/Local/Programs/Python/Python314/python.exe scripts/analyze_comments.py
 ```
 
-采集脚本只处理允许访问的公开页面，不绕过登录、验证码、代理或访问限制；票牛/秀动采用低频访问（列表页 ≥3 秒），网易云公开评论接口按 ≥1 秒间隔限速并支持分片并行。系统启动时优先自动导入 `data/raw/concerts_merged.csv` 与 `comments_input.csv`（不存在时回退基础快照）中尚未入库的记录；测试环境会关闭自动加载以保持测试数据稳定。演唱会日历为紧凑月历热力图（点按日期展开当日场次），并新增 `/api/analytics/sources` 数据来源统计接口。
+采集脚本只处理允许访问的公开页面，不绕过登录、验证码、代理或访问限制；B站评论使用公开 API + wbi 签名（无需登录），单次请求间隔 ≥1 秒、风控自动退避，每条评论保留来源平台与链接。系统启动时自动导入 `concerts_merged.csv`（大麦演唱会）与 `comments_input.csv`（现场评论）中尚未入库的记录，导入幂等去重；测试环境关闭自动加载以保持测试数据稳定。演唱会日历为紧凑月历热力图（点按日期展开当日场次），并包含 `/api/analytics/sources` 数据来源统计接口。
 
 ## 测试
 
