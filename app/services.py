@@ -101,8 +101,8 @@ def import_csv(stream, kind, filename=""):
                 concert = ConcertInfo(
                     artist_name=_value(row, "artist_name") or "周杰伦",
                     concert_name=_value(row, "concert_name"),
-                    city=_value(row, "city"),
-                    venue=_value(row, "venue"),
+                    city=_value(row, "city") or "未知",
+                    venue=_value(row, "venue") or "未知场地",
                     show_time=show_time,
                     price_text=_value(row, "price_text"),
                     min_price=min_price,
@@ -288,6 +288,17 @@ def load_local_concert_snapshot(snapshot_path):
         run_analysis()
     return result
 
+
+def load_local_comment_snapshot(snapshot_path):
+    """Load the checked local comment snapshot (网易云公开评论) into the DB."""
+    path = Path(snapshot_path)
+    if not path.exists():
+        return {"input_count": 0, "success_count": 0, "failed_count": 0, "missing": True}
+    with path.open("rb") as stream:
+        result = import_csv(stream, "comments", path.name)
+    if result.get("success_count", 0):
+        run_analysis()
+    return result
 
 def create_job(job_type):
     job = JobRun(job_type=job_type, status="running")

@@ -16,10 +16,13 @@ SALE_STATUSES = frozenset(
         "已售罄",
         "停售",
         "预售",
+        "预售中",
         "暂停售票",
         "已结束",
         "未开售",
         "已下架",
+        "筹备中",
+        "场次待定",
     }
 )
 MAX_COMMENT_LENGTH = 2000
@@ -49,6 +52,7 @@ _DATE_FORMATS = (
     "%Y-%m-%d %H:%M:%S",
     "%Y-%m-%d %H:%M",
     "%Y-%m-%d",
+    "%Y.%m.%d %H:%M",
     "%Y.%m.%d",
 )
 _PRICE_PATTERN = re.compile(r"\d+(?:[,.]\d+)?")

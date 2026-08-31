@@ -21,3 +21,9 @@ data/processed/
 .cache_tmp/
 node_modules/
 data/raw/*.log
+data/raw/*.log
+data/raw/musicbrainz_events.csv
+data/raw/musicbrainz_events_concert_only.csv
+data/raw/nyphil_concerts.csv
+data/raw/wyy*_part_*.csv
+data/raw/wyy4_top60.txt

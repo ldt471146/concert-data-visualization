@@ -10,7 +10,7 @@ from .auth import auth
 from .extensions import db, login_manager
 from .models import AdminUser
 from .routes import main
-from .services import load_local_concert_snapshot, seed_demo_data
+from .services import load_local_comment_snapshot, load_local_concert_snapshot, seed_demo_data
 
 
 def _ensure_admin(app):
@@ -46,5 +46,8 @@ def create_app(test_config=None):
             merged = raw_dir / "concerts_merged.csv"
             snapshot = merged if merged.exists() else raw_dir / "concerts.csv"
             load_local_concert_snapshot(snapshot)
+            comments_in = raw_dir / "comments_input.csv"
+            if comments_in.exists():
+                load_local_comment_snapshot(comments_in)
 
     return app

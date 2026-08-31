@@ -49,24 +49,28 @@ set DATABASE_URL=mysql+pymysql://用户名:密码@127.0.0.1:3306/concert_analysi
 
 ## 数据与脚本
 
-原始验证快照位于 `data/raw/`，清洗脚本输出到 `data/cleaned/`。除最初 9 来源快照（78 条）外，系统已扩充到十万级多来源数据：
+原始验证快照位于 `data/raw/`，清洗脚本输出到 `data/cleaned/`。除最初 9 来源快照（78 条）外，系统已扩充为**国内演唱会 + 公开评论**两条规模化数据：
 
-- `musicbrainz_events.csv`：MusicBrainz（CC0 开放数据）演唱会事件，全量目标约 12.5 万条，后台低频采集续写中。
-- `nyphil_concerts.csv`：Kaggle 纽约爱乐演出史（21607 场）。
+- `piaoniu_concerts.csv`：票牛网演唱会全量采集（爬虫，真实国内明星演唱会）。
 - `showstart_concerts.csv`：秀动网演出列表爬虫采集（175 场真实国内演出）。
-- `concerts_merged.csv`：`scripts/merge_datasets.py` 按（艺人、名称、场馆、日期）指纹合并去重后的统一快照；每条记录保留 `source_type`（公开数据集/爬虫采集）、`source_url` 和 `collected_at`，可随时复查「哪部分是爬取的、哪部分是公开数据集」。
+- `comments_wyy.csv` / `wyy_part_{0..5}.csv`：网易云音乐公开评论接口采集（无需登录，按艺人×热门歌曲×热评规模化）。
+- `concerts_merged.csv`：`scripts/merge_datasets.py` 按（艺人、名称、场馆、日期）指纹合并去重后的统一演唱会快照；每条记录保留 `source_type`、`source_url` 和 `collected_at`，可随时复查「哪部分是爬取的、哪部分是公开数据」。
 
 数据扩充脚本：
 
 ```bash
-# MusicBrainz 演唱会事件采集（公开数据集，低频限速，支持断电续传）
-C:/Users/Administrator/AppData/Local/Programs/Python/Python314/python.exe scripts/collect_musicbrainz.py
-# Kaggle 纽约爱乐演出史下载转换（公开数据集）
-C:/Users/Administrator/AppData/Local/Programs/Python/Python314/python.exe scripts/convert_nyphil.py
-# 秀动网演出列表爬虫（爬虫采集，低频）
+# 票牛网演唱会全量采集（爬虫，低频，断电续采）
+C:/Users/Administrator/AppData/Local/Programs/Python/Python314/python.exe scripts/collect_piaoniu.py
+# 秀动网演出列表爬虫（爬虫，低频）
 C:/Users/Administrator/AppData/Local/Programs/Python/Python314/python.exe scripts/collect_showstart.py
-# 多来源合并去重
+# 网易云音乐公开评论采集（公开接口，可并行分片：--artists-file / --out / --songs / --pages）
+C:/Users/Administrator/AppData/Local/Programs/Python/Python314/python.exe scripts/collect_wyy_comments.py
+# 评论分片合并
+C:/Users/Administrator/AppData/Local/Programs/Python/Python314/python.exe scripts/merge_wyy_parts.py
+# 多来源演唱会合并去重
 C:/Users/Administrator/AppData/Local/Programs/Python/Python314/python.exe scripts/merge_datasets.py
+# 网易云评论 → 系统评论导入格式（按艺人关联演唱会场次）
+C:/Users/Administrator/AppData/Local/Programs/Python/Python314/python.exe scripts/build_comments_input.py
 ```
 
 清洗和分析：
@@ -76,7 +80,7 @@ C:/Users/Administrator/AppData/Local/Programs/Python/Python314/python.exe script
 C:/Users/Administrator/AppData/Local/Programs/Python/Python314/python.exe scripts/analyze_comments.py
 ```
 
-采集脚本只处理允许访问的公开页面，不绕过登录、验证码、代理或访问限制；对 MusicBrainz 等限速来源使用低频请求与退避重试，对无 robots.txt 的秀动网同样控制访问频率。页面未提供票价时保留“待定”，日期范围按首场日期归档。系统启动时优先自动导入 `data/raw/concerts_merged.csv`（不存在时回退 `concerts.csv`）中尚未入库的记录；测试环境会关闭自动加载以保持测试数据稳定。演唱会日历为紧凑月历热力图（点按日期展开当日场次），并新增 `/api/analytics/sources` 数据来源统计接口。
+采集脚本只处理允许访问的公开页面，不绕过登录、验证码、代理或访问限制；票牛/秀动采用低频访问（列表页 ≥3 秒），网易云公开评论接口按 ≥1 秒间隔限速并支持分片并行。系统启动时优先自动导入 `data/raw/concerts_merged.csv` 与 `comments_input.csv`（不存在时回退基础快照）中尚未入库的记录；测试环境会关闭自动加载以保持测试数据稳定。演唱会日历为紧凑月历热力图（点按日期展开当日场次），并新增 `/api/analytics/sources` 数据来源统计接口。
 
 ## 测试
 

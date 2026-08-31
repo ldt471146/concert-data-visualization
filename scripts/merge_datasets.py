@@ -3,9 +3,8 @@
 
 来源：
 - data/raw/concerts.csv            已有 9 来源快照（爬虫采集）
-- data/raw/musicbrainz_events.csv  MusicBrainz 演唱会事件（公开数据集）
-- data/raw/nyphil_concerts.csv     纽约爱乐演出史（公开数据集）
 - data/raw/showstart_concerts.csv  秀动网演出（爬虫采集）
+- data/raw/piaoniu_concerts.csv    票牛网演出（爬虫采集）
 
 输出：
 - data/raw/concerts_merged.csv     合并去重后的原始快照（保留各来源字段）
@@ -17,14 +16,14 @@
 from __future__ import annotations
 
 import csv
+import re
 from collections import Counter
 from pathlib import Path
 
 SOURCES = [
     ("data/raw/concerts.csv", "爬虫采集"),
-    ("data/raw/musicbrainz_events.csv", "公开数据集"),
-    ("data/raw/nyphil_concerts.csv", "公开数据集"),
     ("data/raw/showstart_concerts.csv", "爬虫采集"),
+    ("data/raw/piaoniu_concerts.csv", "爬虫采集"),
 ]
 OUT = "data/raw/concerts_merged.csv"
 STATS = "data/raw/merge_stats.txt"
@@ -45,6 +44,17 @@ def make_key(row: dict) -> str:
     return "|".join([artist, name, venue, date])
 
 
+def normalize_show_time(raw: str) -> str:
+    """票牛格式归一化: "2026.09.04-09.06 青岛市民健身中心" -> "2026.09.04" 等"""
+    t = (raw or "").strip()
+    if not t:
+        return t
+    t = re.split(r"[\s\n]+", t, maxsplit=1)[0]
+    # 多日期区间取首日期
+    t = re.sub(r"^(\d{4}[.]\d{1,2}[.]\d{1,2})[-–—/~].*$", r"\1", t)
+    return t
+
+
 def main() -> None:
     root = Path(__file__).resolve().parents[1]
     seen: dict[str, dict] = {}
@@ -57,16 +67,21 @@ def main() -> None:
             print(f"跳过（不存在）：{rel}", flush=True)
             continue
         rows = read_rows(path)
+        for r in rows:
+            r["show_time"] = normalize_show_time(r.get("show_time", ""))
         source_rows[label] = len(rows)
         for row in rows:
             row = {key: (row.get(key) or "").strip() for key in HEADERS}
+            if not row.get("source_type"):
+                row["source_type"] = label
             if not row.get("concert_name"):
                 continue
             key = make_key(row)
             if key not in seen:
+                row["city"] = row["city"] or "未知"
+                row["venue"] = row["venue"] or "未知场地"
                 seen[key] = row
                 source_counts[label + "（去重后）"] += 1
-
     out_path = root / OUT
     out_path.parent.mkdir(parents=True, exist_ok=True)
     with out_path.open("w", encoding="utf-8-sig", newline="") as handle:

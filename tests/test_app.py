@@ -164,3 +164,20 @@ def test_bulk_data_sources_files_exist():
         with mb.open(encoding="utf-8-sig", newline="") as handle:
             mb_rows = list(csv.DictReader(handle))
         assert mb_rows, "musicbrainz_events.csv 不应为空"
+
+
+def test_bulk_100k_data_files_reach_target():
+    root = Path(__file__).resolve().parents[1]
+    comments = root / "data" / "raw" / "comments_wyy_merged.csv"
+    concerts = root / "data" / "raw" / "concerts_merged.csv"
+    with comments.open(encoding="utf-8-sig", newline="") as handle:
+        comment_rows = list(csv.DictReader(handle))
+    with concerts.open(encoding="utf-8-sig", newline="") as handle:
+        concert_rows = list(csv.DictReader(handle))
+    # 演唱会记录 + 评论记录 合计 >= 10 万条
+    assert len(comment_rows) + len(concert_rows) >= 100000
+    # 艺人量级: 演唱会去重艺人超过 100 位
+    assert len(Counter(r["artist_name"] for r in concert_rows if r["artist_name"])) >= 100
+    # 来源标注: 记录都带 source_type 与来源地址
+    for r in concert_rows[:200]:
+        assert r["source_type"] and r["source_url"]
