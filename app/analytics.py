@@ -305,3 +305,32 @@ aggregate_calendar = calendar_data
 aggregate_prices = price_data
 aggregate_topics = topic_data
 aggregate_artists = artist_data
+
+
+def sources_data(concerts):
+    """按数据来源统计场次，回应「哪部分是爬取的、哪部分是公开数据集」的复查需求。"""
+    by_source = defaultdict(lambda: {"concerts": 0, "artists": set(), "cities": set()})
+    total = 0
+    for concert in concerts:
+        source = _value(concert, "source_type") or "未标注"
+        by_source[source]["concerts"] += 1
+        artist = _value(concert, "artist_name")
+        city = _value(concert, "city")
+        if artist:
+            by_source[source]["artists"].add(artist)
+        if city:
+            by_source[source]["cities"].add(city)
+        total += 1
+    items = [
+        {
+            "source": source,
+            "concerts": value["concerts"],
+            "artists": len(value["artists"]),
+            "cities": len(value["cities"]),
+        }
+        for source, value in sorted(by_source.items(), key=lambda pair: -pair[1]["concerts"])
+    ]
+    return {"items": items, "total": total, "note": _empty_note(items, "来源统计")}
+
+
+aggregate_sources = sources_data

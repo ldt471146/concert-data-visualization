@@ -171,11 +171,61 @@
         if (!chart || !items.length) return renderEmptyChart('monthly-trend-chart');
         chart.setOption({ animationDuration: 650, grid: { left: 8, right: 12, top: 14, bottom: 20, containLabel: true }, tooltip: { ...chartTooltip, trigger: 'axis' }, legend: { top: 0, right: 0, textStyle: chartText, data: ['演出', '评论'] }, xAxis: { type: 'category', boundaryGap: false, data: items.map((item) => item.period), axisLabel: chartText, axisLine: { lineStyle: { color: chartTheme.line } } }, yAxis: { type: 'value', axisLabel: chartText, splitLine: { lineStyle: { color: chartTheme.line } }, axisLine: { show: false } }, series: [{ name: '演出', type: 'line', smooth: .25, data: items.map((item) => item.concerts), lineStyle: { color: chartTheme.lime }, itemStyle: { color: chartTheme.lime } }, { name: '评论', type: 'line', smooth: .25, data: items.map((item) => item.comments), lineStyle: { color: chartTheme.cyan }, itemStyle: { color: chartTheme.cyan } }] }, true);
     };
+const calendarState = { year: new Date().getFullYear(), month: new Date().getMonth() + 1, selected: null };
+    const calendarHeatClass = (count) => {
+        if (!count) return 'cal-heat-null';
+        if (count <= 3) return 'cal-heat-low';
+        if (count <= 10) return 'cal-heat-mid';
+        return 'cal-heat-high';
+    };
     const renderCalendar = (payload = {}) => {
         const target = document.getElementById('calendar-grid');
         if (!target) return;
-        const items = payload.items || [];
-        target.innerHTML = items.length ? items.map((item) => `<article class="calendar-cell"><strong>${escapeHTML(item.date)}</strong><span>${formatNumber(item.concerts)} 场</span><small>${escapeHTML((item.cities || []).join('、') || '未提供城市')}</small><small>${formatNumber(item.comments)} 条评论</small></article>`).join('') : '<div class="empty-state">暂无日历数据</div>';
+        const items = (payload.items || []).filter((item) => item && (item.concerts != null));
+        const byDate = new Map(items.map((item) => [String(item.date || '').slice(0, 10), { count: Number(item.concerts) || 0, detail: item }]));
+        const { year, month } = calendarState;
+        const first = new Date(year, month - 1, 1);
+        const daysInMonth = new Date(year, month, 0).getDate();
+        const startWeekday = (first.getDay() + 6) % 7; // 周一=0
+        const cells = [];
+        for (let i = 0; i < startWeekday; i += 1) cells.push('<span class="cal-cell cal-cell-empty"></span>');
+        for (let day = 1; day <= daysInMonth; day += 1) {
+            const key = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+            const entry = byDate.get(key);
+            const count = entry ? entry.count : 0;
+            const active = calendarState.selected === key;
+            cells.push(`<button type="button" class="cal-cell cal-day ${calendarHeatClass(count)}${active ? ' is-selected' : ''}" data-cal-date="${key}" title="${key}${count ? `：${count} 场` : ''}" aria-label="${key}${count ? `，${count} 场` : ''}"><strong>${day}</strong><span>${count ? `${formatNumber(count)} 场` : ''}</span></button>`);
+        }
+        const monthTitle = `${year} 年 ${month} 月`;
+        const detail = calendarState.selected ? byDate.get(calendarState.selected) : null;
+        const detailHtml = detail && detail.count
+            ? `<section class="cal-detail"><h4>${escapeHTML(calendarState.selected)} · ${formatNumber(detail.count)} 场</h4>${detail.detail.cities && detail.detail.cities.length ? `<p>${escapeHTML(detail.detail.cities.join('、'))}</p>` : ''}${detail.detail.comments ? `<p>${formatNumber(detail.detail.comments)} 条评论</p>` : ''}</section>`
+            : '';
+        target.innerHTML = `<div class="cal-toolbar"><span class="cal-title">${monthTitle}</span><div class="cal-nav"><button type="button" class="cal-nav-btn" data-cal-prev aria-label="上一月"><i data-lucide="chevron-left"></i></button><button type="button" class="cal-nav-btn" data-cal-today aria-label="回到本月">本月</button><button type="button" class="cal-nav-btn" data-cal-next aria-label="下一月"><i data-lucide="chevron-right"></i></button></div></div><div class="cal-weekdays"><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span></div><div class="cal-grid">${cells.join('')}</div>${detailHtml}`;
+        target.querySelectorAll('[data-cal-date]').forEach((node) => node.addEventListener('click', (event) => {
+            calendarState.selected = node.dataset.calDate === calendarState.selected ? null : node.dataset.calDate;
+            renderCalendar(payload);
+        }));
+        target.querySelectorAll('[data-cal-prev]').forEach((node) => node.addEventListener('click', () => {
+            calendarState.month -= 1;
+            if (calendarState.month < 1) { calendarState.month = 12; calendarState.year -= 1; }
+            calendarState.selected = null;
+            renderCalendar(payload);
+        }));
+        target.querySelectorAll('[data-cal-next]').forEach((node) => node.addEventListener('click', () => {
+            calendarState.month += 1;
+            if (calendarState.month > 12) { calendarState.month = 1; calendarState.year += 1; }
+            calendarState.selected = null;
+            renderCalendar(payload);
+        }));
+        target.querySelectorAll('[data-cal-today]').forEach((node) => node.addEventListener('click', () => {
+            const now = new Date();
+            calendarState.year = now.getFullYear();
+            calendarState.month = now.getMonth() + 1;
+            calendarState.selected = null;
+            renderCalendar(payload);
+        }));
+        if (window.lucide) window.lucide.createIcons();
     };
     const renderPriceAnalysis = (payload = {}) => {
         const items = payload.ranges || [];
@@ -195,6 +245,12 @@
         if (!chart || !items.length) return renderEmptyChart('artists-chart');
         chart.setOption({ animationDuration: 600, grid: { left: 12, right: 24, top: 8, bottom: 12, containLabel: true }, tooltip: { ...chartTooltip, trigger: 'axis', axisPointer: { type: 'shadow' }, formatter: (params) => `${escapeHTML(params[0]?.name || '')}<br/>${params[0]?.value || 0} 场` }, xAxis: { type: 'value', splitLine: { lineStyle: { color: chartTheme.line } }, axisLabel: chartText, axisLine: { show: false } }, yAxis: { type: 'category', data: items.map((item) => item.artist).reverse(), axisLabel: { color: chartTheme.ink, fontFamily: 'Fira Sans', fontSize: 10 }, axisTick: { show: false }, axisLine: { show: false } }, series: [{ type: 'bar', data: items.map((item) => item.concerts).reverse(), barWidth: 10, itemStyle: { color: chartTheme.lime }, label: { show: true, position: 'right', color: chartTheme.lime, fontFamily: 'Fira Code', fontSize: 10 } }] }, true);
     };
+    const renderSources = (payload = {}) => {
+        const target = document.getElementById('sources-list');
+        if (!target) return;
+        const items = (payload.items || []).filter((item) => item.concerts > 0);
+        target.innerHTML = items.length ? items.map((item) => `<article class="source-item"><span class="source-name">${escapeHTML(item.source)}</span><span class="source-count">${formatNumber(item.concerts)} 场</span><span class="source-meta">覆盖 ${formatNumber(item.artists)} 位艺人 / ${formatNumber(item.cities)} 个城市</span></article>`).join('') : '<div class="empty-state">暂无来源数据</div>';
+    };
     const renderExtendedAnalytics = (payloads) => {
         renderMap(payloads[0]);
         renderMonthlyTrend(payloads[1]);
@@ -202,6 +258,7 @@
         renderPriceAnalysis(payloads[3]);
         renderTopics(payloads[4]);
         renderArtists(payloads[5]);
+        renderSources(payloads[6]);
     };
 
     const renderFilters = (meta, current) => {
@@ -309,7 +366,7 @@
     const loadDashboard = async (query = '') => {
         const stage = document.querySelector('.main-stage');
         stage?.classList.add('is-loading');
-        const names = ['map', 'trend', 'calendar', 'prices', 'topics', 'artists'];
+        const names = ['map', 'trend', 'calendar', 'prices', 'topics', 'artists', 'sources'];
         try {
             const overviewPromise = fetchJSON(`/api/overview${query ? `?${query}` : ''}`);
             const analyticsPromise = Promise.all(names.map((name) => fetchJSON(`/api/analytics/${name}${query ? `?${query}` : ''}`).catch((error) => ({ error }))));

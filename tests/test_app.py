@@ -140,5 +140,27 @@ def test_fresh_app_loads_local_snapshot(tmp_path):
         "LOAD_LOCAL_SNAPSHOT": True,
     })
     with app.app_context():
-        assert ConcertInfo.query.count() == 78
+        count = ConcertInfo.query.count()
+        # 有合并快照时加载 merged（十万级），否则回退 78 条基础快照
+        merged = Path(__file__).resolve().parents[1] / "data" / "raw" / "concerts_merged.csv"
+        assert count == 78 or (merged.exists() and count > 78)
         db.drop_all()
+
+
+def test_bulk_data_sources_files_exist():
+    root = Path(__file__).resolve().parents[1]
+    nyphil = root / "data" / "raw" / "nyphil_concerts.csv"
+    showstart = root / "data" / "raw" / "showstart_concerts.csv"
+    mb = root / "data" / "raw" / "musicbrainz_events.csv"
+    with nyphil.open(encoding="utf-8-sig", newline="") as handle:
+        nyphil_rows = list(csv.DictReader(handle))
+    with showstart.open(encoding="utf-8-sig", newline="") as handle:
+        showstart_rows = list(csv.DictReader(handle))
+    assert len(nyphil_rows) > 20000
+    assert len(showstart_rows) > 100
+    assert all(row["source_type"] in ("公开数据集", "爬虫采集") for row in nyphil_rows + showstart_rows)
+    assert all(row["source_url"] and row["collected_at"] for row in nyphil_rows + showstart_rows)
+    if mb.exists():
+        with mb.open(encoding="utf-8-sig", newline="") as handle:
+            mb_rows = list(csv.DictReader(handle))
+        assert mb_rows, "musicbrainz_events.csv 不应为空"

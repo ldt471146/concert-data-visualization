@@ -11,6 +11,7 @@ from .analytics import (
     price_data,
     topic_data,
     trend_data,
+    sources_data,
 )
 from .models import CommentInfo, ConcertInfo, TicketPriceDetail
 from .recommend import build_recommendations
@@ -238,3 +239,9 @@ def analytics_topics():
 def analytics_artists():
     _, concerts, comments, _ = _analytics_context()
     return _analytics_response(artist_data(concerts, comments))
+
+
+@main.get("/api/analytics/sources")
+def analytics_sources():
+    _, concerts, _, _ = _analytics_context()
+    return _analytics_response(sources_data(concerts))

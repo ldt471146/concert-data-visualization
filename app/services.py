@@ -81,6 +81,8 @@ def import_csv(stream, kind, filename=""):
 
     if kind == "concerts":
         existing = _existing_concert_fingerprints()
+        pending = []
+        batch_size = 500
         for row_number, row in enumerate(rows, start=2):
             fingerprint = concert_fingerprint(row)
             if row_number in duplicate_rows or fingerprint in existing:
@@ -110,7 +112,7 @@ def import_csv(stream, kind, filename=""):
                     collected_at=parse_datetime(_value(row, "collected_at")),
                 )
                 db.session.add(concert)
-                db.session.flush()
+                db.session.flush()  # 立即分配 id，供票价明细外键使用
                 if min_price is not None:
                     db.session.add(
                         TicketPriceDetail(
@@ -122,6 +124,11 @@ def import_csv(stream, kind, filename=""):
                     )
                 existing.add(fingerprint)
                 success += 1
+                pending.append(concert)
+                if len(pending) >= batch_size:
+                    db.session.commit()
+                    db.session.commit()
+                    pending = []
             except Exception:
                 db.session.rollback()
                 failed += 1
